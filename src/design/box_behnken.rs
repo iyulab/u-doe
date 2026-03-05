@@ -36,7 +36,11 @@ use crate::error::DoeError;
 /// ```
 pub fn box_behnken(k: usize, n_center: usize) -> Result<DesignMatrix, DoeError> {
     if !matches!(k, 3..=5) {
-        return Err(DoeError::InvalidFactorCount { min: 3, max: 5, got: k });
+        return Err(DoeError::InvalidFactorCount {
+            min: 3,
+            max: 5,
+            got: k,
+        });
     }
     if n_center == 0 {
         return Err(DoeError::InvalidSpecification(
@@ -121,8 +125,7 @@ mod tests {
         let d = box_behnken(3, 1).unwrap();
         for row in &d.data {
             let at_extreme = row.iter().filter(|&&v| v.abs() > 0.9).count();
-            assert!(at_extreme <= 2,
-                "corner point detected: {row:?}");
+            assert!(at_extreme <= 2, "corner point detected: {row:?}");
         }
     }
 

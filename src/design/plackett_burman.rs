@@ -21,10 +21,15 @@ use crate::error::DoeError;
 /// (N, base_row) pairs. Up to N-1 factors can be screened in N runs.
 /// Source: Plackett & Burman (1946), Table 1.
 const PB_BASES: &[(usize, &[i8])] = &[
-    (8,  &[ 1,  1,  1, -1,  1, -1, -1]),
-    (12, &[ 1,  1, -1,  1,  1,  1, -1, -1, -1,  1, -1]),
-    (16, &[ 1,  1,  1,  1, -1,  1, -1,  1,  1, -1, -1,  1, -1, -1, -1]),
-    (20, &[ 1,  1, -1, -1,  1,  1,  1,  1, -1,  1, -1,  1, -1, -1, -1, -1,  1,  1, -1]),
+    (8, &[1, 1, 1, -1, 1, -1, -1]),
+    (12, &[1, 1, -1, 1, 1, 1, -1, -1, -1, 1, -1]),
+    (16, &[1, 1, 1, 1, -1, 1, -1, 1, 1, -1, -1, 1, -1, -1, -1]),
+    (
+        20,
+        &[
+            1, 1, -1, -1, 1, 1, 1, 1, -1, 1, -1, 1, -1, -1, -1, -1, 1, 1, -1,
+        ],
+    ),
 ];
 
 /// Generate a Plackett-Burman design for `k` factors (1 ≤ k ≤ 19).
@@ -45,14 +50,22 @@ const PB_BASES: &[(usize, &[i8])] = &[
 /// ```
 pub fn plackett_burman(k: usize) -> Result<DesignMatrix, DoeError> {
     if k == 0 || k > 19 {
-        return Err(DoeError::InvalidFactorCount { min: 1, max: 19, got: k });
+        return Err(DoeError::InvalidFactorCount {
+            min: 1,
+            max: 19,
+            got: k,
+        });
     }
 
     let (n, base) = PB_BASES
         .iter()
         .find(|(n, _)| *n > k)
         .map(|(n, b)| (*n, *b))
-        .ok_or(DoeError::InvalidFactorCount { min: 1, max: 19, got: k })?;
+        .ok_or(DoeError::InvalidFactorCount {
+            min: 1,
+            max: 19,
+            got: k,
+        })?;
 
     let m = n - 1; // number of base columns
 

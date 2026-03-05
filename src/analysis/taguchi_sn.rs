@@ -200,10 +200,7 @@ pub fn sn_factor_effects(
             .iter()
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
-        let min_sn = level_sn_means
-            .iter()
-            .copied()
-            .fold(f64::INFINITY, f64::min);
+        let min_sn = level_sn_means.iter().copied().fold(f64::INFINITY, f64::min);
 
         let optimal_level = level_sn_means
             .iter()

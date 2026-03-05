@@ -6,11 +6,7 @@
 //! Reference: Montgomery, D.C. (2019). *Introduction to Statistical Quality
 //! Control*, 8th ed., Section 6.4. Wiley.
 
-use crate::{
-    analysis::effects::estimate_effects,
-    design::DesignMatrix,
-    error::DoeError,
-};
+use crate::{analysis::effects::estimate_effects, design::DesignMatrix, error::DoeError};
 
 /// One row in the ANOVA table.
 #[derive(Debug, Clone)]
@@ -131,7 +127,11 @@ pub fn doe_anova(
         })
         .collect();
 
-    let r_squared = if total_ss > 1e-12 { model_ss / total_ss } else { 0.0 };
+    let r_squared = if total_ss > 1e-12 {
+        model_ss / total_ss
+    } else {
+        0.0
+    };
     let r_squared_adj = if residual_df > 0 && total_df > 0 {
         1.0 - (residual_ss / residual_df as f64) / (total_ss / total_df as f64)
     } else {
@@ -215,8 +215,7 @@ fn continued_fraction_beta(x: f64, a: f64, b: f64) -> f64 {
         h *= d * c;
 
         // Odd step
-        let numerator2 =
-            -(a + mf) * (a + b + mf) * x / ((a + 2.0 * mf) * (a + 2.0 * mf + 1.0));
+        let numerator2 = -(a + mf) * (a + b + mf) * x / ((a + 2.0 * mf) * (a + 2.0 * mf + 1.0));
         d = 1.0 + numerator2 * d;
         if d.abs() < FPMIN {
             d = FPMIN;
@@ -269,16 +268,20 @@ mod tests {
 
     fn montgomery_responses() -> Vec<f64> {
         vec![
-            45.0, 71.0, 48.0, 65.0, 68.0, 60.0, 80.0, 65.0,
-            43.0, 100.0, 45.0, 104.0, 75.0, 86.0, 70.0, 96.0,
+            45.0, 71.0, 48.0, 65.0, 68.0, 60.0, 80.0, 65.0, 43.0, 100.0, 45.0, 104.0, 75.0, 86.0,
+            70.0, 96.0,
         ]
     }
 
     #[test]
     fn anova_significant_a() {
         let design = full_factorial(4).unwrap();
-        let result = doe_anova(&design, &montgomery_responses(),
-                               &["A", "B", "C", "D", "AC"]).unwrap();
+        let result = doe_anova(
+            &design,
+            &montgomery_responses(),
+            &["A", "B", "C", "D", "AC"],
+        )
+        .unwrap();
         let row_a = result.effects.iter().find(|r| r.name == "A").unwrap();
         // A is highly significant
         assert!(row_a.f_statistic > 10.0, "A F={}", row_a.f_statistic);
@@ -287,8 +290,7 @@ mod tests {
     #[test]
     fn anova_r_squared_reasonable() {
         let design = full_factorial(4).unwrap();
-        let result = doe_anova(&design, &montgomery_responses(),
-                               &["A", "C", "D", "AC"]).unwrap();
+        let result = doe_anova(&design, &montgomery_responses(), &["A", "C", "D", "AC"]).unwrap();
         // A, C, D, AC explain ~77% of total variance in this dataset
         assert!(result.r_squared > 0.70, "R²={}", result.r_squared);
     }
@@ -296,8 +298,7 @@ mod tests {
     #[test]
     fn anova_ss_partition() {
         let design = full_factorial(4).unwrap();
-        let result = doe_anova(&design, &montgomery_responses(),
-                               &["A", "C", "D", "AC"]).unwrap();
+        let result = doe_anova(&design, &montgomery_responses(), &["A", "C", "D", "AC"]).unwrap();
         let ss_model: f64 = result.effects.iter().map(|r| r.sum_of_squares).sum();
         let recon = ss_model + result.residual_ss;
         assert!(
@@ -329,8 +330,11 @@ mod tests {
         assert!((lgamma(1.0)).abs() < 1e-9, "lgamma(1)={}", lgamma(1.0));
         assert!((lgamma(2.0)).abs() < 1e-9, "lgamma(2)={}", lgamma(2.0));
         let expected = (std::f64::consts::PI.sqrt()).ln();
-        assert!((lgamma(0.5) - expected).abs() < 1e-9,
-            "lgamma(0.5)={} expected={expected}", lgamma(0.5));
+        assert!(
+            (lgamma(0.5) - expected).abs() < 1e-9,
+            "lgamma(0.5)={} expected={expected}",
+            lgamma(0.5)
+        );
     }
 
     #[test]

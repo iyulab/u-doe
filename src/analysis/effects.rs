@@ -90,13 +90,21 @@ pub fn estimate_effects(
             .collect();
 
         // Effect = (2/n) * dot(contrast, responses)
-        let dot: f64 = contrast.iter().zip(responses.iter()).map(|(&c, &y)| c * y).sum();
+        let dot: f64 = contrast
+            .iter()
+            .zip(responses.iter())
+            .map(|(&c, &y)| c * y)
+            .sum();
         let effect = (2.0 / n as f64) * dot;
 
         // SS = n * effect² / 4
         let ss = (n as f64) * effect * effect / 4.0;
 
-        let pct = if ss_total > 1e-12 { ss / ss_total * 100.0 } else { 0.0 };
+        let pct = if ss_total > 1e-12 {
+            ss / ss_total * 100.0
+        } else {
+            0.0
+        };
 
         estimates.push(EffectEstimate {
             name: term_name(term, &design.factor_names),
@@ -189,17 +197,17 @@ fn term_name(cols: &[usize], factor_names: &[String]) -> String {
 fn normal_quantile(p: f64) -> f64 {
     const A: [f64; 6] = [
         -3.969_683_028_665_376e1,
-         2.209_460_984_245_205e2,
+        2.209_460_984_245_205e2,
         -2.759_285_104_469_687e2,
-         1.383_577_518_672_69e2,
+        1.383_577_518_672_69e2,
         -3.066_479_806_614_716e1,
-         2.506_628_277_459_239,
+        2.506_628_277_459_239,
     ];
     const B: [f64; 5] = [
         -5.447_609_879_822_406e1,
-         1.615_858_368_580_409e2,
+        1.615_858_368_580_409e2,
         -1.556_989_798_598_866e2,
-         6.680_131_188_771_972e1,
+        6.680_131_188_771_972e1,
         -1.328_068_155_288_572e1,
     ];
     const C: [f64; 6] = [
@@ -207,14 +215,14 @@ fn normal_quantile(p: f64) -> f64 {
         -3.223_964_580_411_365e-1,
         -2.400_758_277_161_838,
         -2.549_732_539_343_734,
-         4.374_664_141_464_968,
-         2.938_163_982_698_783,
+        4.374_664_141_464_968,
+        2.938_163_982_698_783,
     ];
     const D: [f64; 4] = [
-         7.784_695_709_041_462e-3,
-         3.224_671_290_700_398e-1,
-         2.445_134_137_142_996,
-         3.754_408_661_907_416,
+        7.784_695_709_041_462e-3,
+        3.224_671_290_700_398e-1,
+        2.445_134_137_142_996,
+        3.754_408_661_907_416,
     ];
 
     let p_low = 0.02425;
@@ -245,8 +253,8 @@ mod tests {
     // p.235, Table 6.8
     fn montgomery_ex_6_2_responses() -> Vec<f64> {
         vec![
-            45.0, 71.0, 48.0, 65.0, 68.0, 60.0, 80.0, 65.0,
-            43.0, 100.0, 45.0, 104.0, 75.0, 86.0, 70.0, 96.0,
+            45.0, 71.0, 48.0, 65.0, 68.0, 60.0, 80.0, 65.0, 43.0, 100.0, 45.0, 104.0, 75.0, 86.0,
+            70.0, 96.0,
         ]
     }
 
@@ -326,9 +334,24 @@ mod tests {
     #[test]
     fn half_normal_plot_sorted() {
         let effects = vec![
-            EffectEstimate { name: "A".into(), estimate: -5.0, sum_of_squares: 25.0, percent_contribution: 50.0 },
-            EffectEstimate { name: "B".into(), estimate: 2.0, sum_of_squares: 4.0, percent_contribution: 8.0 },
-            EffectEstimate { name: "C".into(), estimate: -1.0, sum_of_squares: 1.0, percent_contribution: 2.0 },
+            EffectEstimate {
+                name: "A".into(),
+                estimate: -5.0,
+                sum_of_squares: 25.0,
+                percent_contribution: 50.0,
+            },
+            EffectEstimate {
+                name: "B".into(),
+                estimate: 2.0,
+                sum_of_squares: 4.0,
+                percent_contribution: 8.0,
+            },
+            EffectEstimate {
+                name: "C".into(),
+                estimate: -1.0,
+                sum_of_squares: 1.0,
+                percent_contribution: 2.0,
+            },
         ];
         let data = half_normal_plot_data(&effects);
         assert_eq!(data.len(), 3);

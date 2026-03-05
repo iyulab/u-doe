@@ -70,7 +70,11 @@ pub fn rotatable_alpha(k: usize) -> f64 {
 /// ```
 pub fn ccd(k: usize, alpha_type: AlphaType, n_center: usize) -> Result<DesignMatrix, DoeError> {
     if !(2..=6).contains(&k) {
-        return Err(DoeError::InvalidFactorCount { min: 2, max: 6, got: k });
+        return Err(DoeError::InvalidFactorCount {
+            min: 2,
+            max: 6,
+            got: k,
+        });
     }
     if n_center == 0 {
         return Err(DoeError::InvalidSpecification(
@@ -163,8 +167,10 @@ mod tests {
         // First 4 rows = factorial: all values ±1
         for run in 0..4 {
             for &v in &d.data[run] {
-                assert!((v.abs() - 1.0).abs() < 1e-10,
-                    "factorial point run {run} has value {v}");
+                assert!(
+                    (v.abs() - 1.0).abs() < 1e-10,
+                    "factorial point run {run} has value {v}"
+                );
             }
         }
     }
@@ -175,11 +181,16 @@ mod tests {
         let factorial_runs = 1 << 3; // 8
         for i in 0..(2 * 3) {
             let run = factorial_runs + i;
-            let nonzero: Vec<f64> = d.data[run].iter().copied()
+            let nonzero: Vec<f64> = d.data[run]
+                .iter()
+                .copied()
                 .filter(|&v| v.abs() > 1e-9)
                 .collect();
-            assert_eq!(nonzero.len(), 1,
-                "axial run {i} should have exactly 1 nonzero factor");
+            assert_eq!(
+                nonzero.len(),
+                1,
+                "axial run {i} should have exactly 1 nonzero factor"
+            );
         }
     }
 
@@ -216,12 +227,16 @@ mod tests {
         let factorial_runs = 4;
         for i in 0..(2 * 2) {
             let run = factorial_runs + i;
-            let nonzero: Vec<f64> = d.data[run].iter().copied()
+            let nonzero: Vec<f64> = d.data[run]
+                .iter()
+                .copied()
                 .filter(|&v| v.abs() > 1e-9)
                 .collect();
             assert_eq!(nonzero.len(), 1);
-            assert!((nonzero[0].abs() - 1.0).abs() < 1e-10,
-                "inscribed axial should be ±1");
+            assert!(
+                (nonzero[0].abs() - 1.0).abs() < 1e-10,
+                "inscribed axial should be ±1"
+            );
         }
     }
 }

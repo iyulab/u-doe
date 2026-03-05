@@ -28,11 +28,7 @@ struct ArraySpec {
 // -----------------------------------------------------------------------
 
 // L4(2^3): 4 runs, 3 two-level columns
-const L4_COLS: &[&[u8]] = &[
-    &[1, 1, 2, 2],
-    &[1, 2, 1, 2],
-    &[1, 2, 2, 1],
-];
+const L4_COLS: &[&[u8]] = &[&[1, 1, 2, 2], &[1, 2, 1, 2], &[1, 2, 2, 1]];
 
 // L8(2^7): 8 runs, 7 two-level columns
 const L8_COLS: &[&[u8]] = &[
@@ -104,29 +100,90 @@ const L18_COLS: &[&[u8]] = &[
 
 // L27(3^13): 27 runs, 13 three-level columns
 const L27_COLS: &[&[u8]] = &[
-    &[1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3],
-    &[1,1,1,2,2,2,3,3,3,1,1,1,2,2,2,3,3,3,1,1,1,2,2,2,3,3,3],
-    &[1,1,1,2,2,2,3,3,3,2,2,2,3,3,3,1,1,1,3,3,3,1,1,1,2,2,2],
-    &[1,2,3,1,2,3,1,2,3,1,2,3,1,2,3,1,2,3,1,2,3,1,2,3,1,2,3],
-    &[1,2,3,1,2,3,1,2,3,2,3,1,2,3,1,2,3,1,3,1,2,3,1,2,3,1,2],
-    &[1,2,3,2,3,1,3,1,2,1,2,3,2,3,1,3,1,2,2,3,1,3,1,2,1,2,3],
-    &[1,2,3,2,3,1,3,1,2,2,3,1,3,1,2,1,2,3,3,1,2,1,2,3,2,3,1],
-    &[1,2,3,3,1,2,2,3,1,1,2,3,3,1,2,2,3,1,1,2,3,3,1,2,2,3,1],
-    &[1,2,3,3,1,2,2,3,1,2,3,1,1,2,3,3,1,2,2,3,1,1,2,3,3,1,2],
-    &[1,2,3,3,1,2,2,3,1,3,1,2,2,3,1,1,2,3,3,1,2,2,3,1,1,2,3],
-    &[1,3,2,1,3,2,1,3,2,2,1,3,2,1,3,2,1,3,3,2,1,3,2,1,3,2,1],
-    &[1,3,2,2,1,3,3,2,1,1,3,2,2,1,3,3,2,1,1,3,2,2,1,3,3,2,1],
-    &[1,3,2,3,2,1,2,1,3,1,3,2,3,2,1,2,1,3,2,1,3,1,3,2,3,2,1],
+    &[
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    ],
+    &[
+        1, 1, 1, 2, 2, 2, 3, 3, 3, 1, 1, 1, 2, 2, 2, 3, 3, 3, 1, 1, 1, 2, 2, 2, 3, 3, 3,
+    ],
+    &[
+        1, 1, 1, 2, 2, 2, 3, 3, 3, 2, 2, 2, 3, 3, 3, 1, 1, 1, 3, 3, 3, 1, 1, 1, 2, 2, 2,
+    ],
+    &[
+        1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3,
+    ],
+    &[
+        1, 2, 3, 1, 2, 3, 1, 2, 3, 2, 3, 1, 2, 3, 1, 2, 3, 1, 3, 1, 2, 3, 1, 2, 3, 1, 2,
+    ],
+    &[
+        1, 2, 3, 2, 3, 1, 3, 1, 2, 1, 2, 3, 2, 3, 1, 3, 1, 2, 2, 3, 1, 3, 1, 2, 1, 2, 3,
+    ],
+    &[
+        1, 2, 3, 2, 3, 1, 3, 1, 2, 2, 3, 1, 3, 1, 2, 1, 2, 3, 3, 1, 2, 1, 2, 3, 2, 3, 1,
+    ],
+    &[
+        1, 2, 3, 3, 1, 2, 2, 3, 1, 1, 2, 3, 3, 1, 2, 2, 3, 1, 1, 2, 3, 3, 1, 2, 2, 3, 1,
+    ],
+    &[
+        1, 2, 3, 3, 1, 2, 2, 3, 1, 2, 3, 1, 1, 2, 3, 3, 1, 2, 2, 3, 1, 1, 2, 3, 3, 1, 2,
+    ],
+    &[
+        1, 2, 3, 3, 1, 2, 2, 3, 1, 3, 1, 2, 2, 3, 1, 1, 2, 3, 3, 1, 2, 2, 3, 1, 1, 2, 3,
+    ],
+    &[
+        1, 3, 2, 1, 3, 2, 1, 3, 2, 2, 1, 3, 2, 1, 3, 2, 1, 3, 3, 2, 1, 3, 2, 1, 3, 2, 1,
+    ],
+    &[
+        1, 3, 2, 2, 1, 3, 3, 2, 1, 1, 3, 2, 2, 1, 3, 3, 2, 1, 1, 3, 2, 2, 1, 3, 3, 2, 1,
+    ],
+    &[
+        1, 3, 2, 3, 2, 1, 2, 1, 3, 1, 3, 2, 3, 2, 1, 2, 1, 3, 2, 1, 3, 1, 3, 2, 3, 2, 1,
+    ],
 ];
 
 const ARRAYS: &[ArraySpec] = &[
-    ArraySpec { name: "L4",  runs: 4,  max_factors: 3,  columns: L4_COLS  },
-    ArraySpec { name: "L8",  runs: 8,  max_factors: 7,  columns: L8_COLS  },
-    ArraySpec { name: "L9",  runs: 9,  max_factors: 4,  columns: L9_COLS  },
-    ArraySpec { name: "L12", runs: 12, max_factors: 11, columns: L12_COLS },
-    ArraySpec { name: "L16", runs: 16, max_factors: 15, columns: L16_COLS },
-    ArraySpec { name: "L18", runs: 18, max_factors: 8,  columns: L18_COLS },
-    ArraySpec { name: "L27", runs: 27, max_factors: 13, columns: L27_COLS },
+    ArraySpec {
+        name: "L4",
+        runs: 4,
+        max_factors: 3,
+        columns: L4_COLS,
+    },
+    ArraySpec {
+        name: "L8",
+        runs: 8,
+        max_factors: 7,
+        columns: L8_COLS,
+    },
+    ArraySpec {
+        name: "L9",
+        runs: 9,
+        max_factors: 4,
+        columns: L9_COLS,
+    },
+    ArraySpec {
+        name: "L12",
+        runs: 12,
+        max_factors: 11,
+        columns: L12_COLS,
+    },
+    ArraySpec {
+        name: "L16",
+        runs: 16,
+        max_factors: 15,
+        columns: L16_COLS,
+    },
+    ArraySpec {
+        name: "L18",
+        runs: 18,
+        max_factors: 8,
+        columns: L18_COLS,
+    },
+    ArraySpec {
+        name: "L27",
+        runs: 27,
+        max_factors: 13,
+        columns: L27_COLS,
+    },
 ];
 
 /// Infer the number of levels for a column from its maximum stored value.
@@ -134,8 +191,16 @@ const ARRAYS: &[ArraySpec] = &[
 /// Two-level columns use values 1 and 2 (max == 2).
 /// Three-level columns use values 1, 2, and 3 (max == 3).
 fn infer_levels(col_data: &[u8]) -> usize {
-    let max = col_data.iter().copied().max().expect("column must be non-empty");
-    if max <= 2 { 2 } else { 3 }
+    let max = col_data
+        .iter()
+        .copied()
+        .max()
+        .expect("column must be non-empty");
+    if max <= 2 {
+        2
+    } else {
+        3
+    }
 }
 
 /// Convert a 1-based level index to a coded value.
@@ -145,7 +210,11 @@ fn infer_levels(col_data: &[u8]) -> usize {
 fn to_coded(level: u8, n_levels: usize) -> f64 {
     match n_levels {
         2 => {
-            if level == 1 { -1.0 } else { 1.0 }
+            if level == 1 {
+                -1.0
+            } else {
+                1.0
+            }
         }
         3 => match level {
             1 => -1.0,
@@ -176,12 +245,11 @@ fn to_coded(level: u8, n_levels: usize) -> f64 {
 /// assert_eq!(d.factor_count(), 7);
 /// ```
 pub fn taguchi_array(name: &str, k: usize) -> Result<DesignMatrix, DoeError> {
-    let spec = ARRAYS
-        .iter()
-        .find(|a| a.name == name)
-        .ok_or_else(|| DoeError::UnsupportedDesign(
-            format!("unknown Taguchi array '{name}'; supported: L4, L8, L9, L12, L16, L18, L27")
-        ))?;
+    let spec = ARRAYS.iter().find(|a| a.name == name).ok_or_else(|| {
+        DoeError::UnsupportedDesign(format!(
+            "unknown Taguchi array '{name}'; supported: L4, L8, L9, L12, L16, L18, L27"
+        ))
+    })?;
 
     if k == 0 || k > spec.max_factors {
         return Err(DoeError::InvalidFactorCount {

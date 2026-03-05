@@ -62,7 +62,14 @@ impl ResponseSpec {
     /// assert!((spec.desirability(75.0) - 0.5).abs() < 1e-9);
     /// ```
     pub fn maximize(lower: f64, target: f64, upper: f64, s: f64) -> Self {
-        Self { goal: GoalType::Maximize, lower, target, upper, s1: s, s2: s }
+        Self {
+            goal: GoalType::Maximize,
+            lower,
+            target,
+            upper,
+            s1: s,
+            s2: s,
+        }
     }
 
     /// Create a "smaller-is-better" specification.
@@ -77,7 +84,14 @@ impl ResponseSpec {
     /// assert!((spec.desirability(25.0) - 0.5).abs() < 1e-9);
     /// ```
     pub fn minimize(lower: f64, target: f64, upper: f64, s: f64) -> Self {
-        Self { goal: GoalType::Minimize, lower, target, upper, s1: s, s2: s }
+        Self {
+            goal: GoalType::Minimize,
+            lower,
+            target,
+            upper,
+            s1: s,
+            s2: s,
+        }
     }
 
     /// Create a "hit-a-target" specification.
@@ -93,7 +107,14 @@ impl ResponseSpec {
     /// assert!((spec.desirability(80.0) - 1.0).abs() < 1e-10);
     /// ```
     pub fn target(lower: f64, target: f64, upper: f64, s1: f64, s2: f64) -> Self {
-        Self { goal: GoalType::Target, lower, target, upper, s1, s2 }
+        Self {
+            goal: GoalType::Target,
+            lower,
+            target,
+            upper,
+            s1,
+            s2,
+        }
     }
 
     /// Compute the individual desirability for observed value `y`.

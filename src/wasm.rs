@@ -106,9 +106,12 @@ pub fn ccd(k: usize, design_type: &str, n_center: usize) -> Result<JsValue, JsVa
         "FaceCentered" => crate::design::ccd::AlphaType::FaceCentered,
         "Rotatable" => crate::design::ccd::AlphaType::Rotatable,
         "Inscribed" => crate::design::ccd::AlphaType::Inscribed,
-        other => return Err(js_err(format!(
-            "unknown design_type '{}'; expected FaceCentered, Rotatable, or Inscribed", other
-        ))),
+        other => {
+            return Err(js_err(format!(
+                "unknown design_type '{}'; expected FaceCentered, Rotatable, or Inscribed",
+                other
+            )))
+        }
     };
     let design = crate::design::ccd::ccd(k, alpha_type, n_center).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -233,10 +236,12 @@ pub fn signal_to_noise(responses_json: JsValue, goal: &str) -> Result<JsValue, J
         "LargerIsBetter" => crate::analysis::taguchi_sn::SnGoal::LargerIsBetter,
         "SmallerIsBetter" => crate::analysis::taguchi_sn::SnGoal::SmallerIsBetter,
         "NominalIsBest" => crate::analysis::taguchi_sn::SnGoal::NominalIsBest,
-        other => return Err(js_err(format!(
-            "unknown goal '{}'; expected LargerIsBetter, SmallerIsBetter, or NominalIsBest",
-            other
-        ))),
+        other => {
+            return Err(js_err(format!(
+                "unknown goal '{}'; expected LargerIsBetter, SmallerIsBetter, or NominalIsBest",
+                other
+            )))
+        }
     };
 
     let sn_values =

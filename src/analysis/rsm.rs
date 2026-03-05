@@ -233,10 +233,7 @@ mod tests {
         let model = fit_rsm(&design, &responses).unwrap();
         let pred_center = model.predict(&[0.0, 0.0]);
         // Should be near mean of center points (~40.78)
-        assert!(
-            (pred_center - 40.78).abs() < 1.0,
-            "pred={pred_center}"
-        );
+        assert!((pred_center - 40.78).abs() < 1.0, "pred={pred_center}");
     }
 
     #[test]
@@ -245,9 +242,7 @@ mod tests {
         let n = design.run_count();
         let responses: Vec<f64> = (0..n).map(|i| i as f64).collect();
         let model = fit_rsm(&design, &responses).unwrap();
-        assert!(
-            model.r_squared >= 0.0 && model.r_squared <= 1.0 + 1e-9
-        );
+        assert!(model.r_squared >= 0.0 && model.r_squared <= 1.0 + 1e-9);
     }
 
     #[test]

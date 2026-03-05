@@ -14,8 +14,8 @@ use u_doe::optimization::desirability::{overall_desirability, ResponseSpec};
 fn montgomery_ex62_full_pipeline() {
     let design = full_factorial(4).unwrap();
     let responses = vec![
-        45.0, 71.0, 48.0, 65.0, 68.0, 60.0, 80.0, 65.0,
-        43.0, 100.0, 45.0, 104.0, 75.0, 86.0, 70.0, 96.0,
+        45.0, 71.0, 48.0, 65.0, 68.0, 60.0, 80.0, 65.0, 43.0, 100.0, 45.0, 104.0, 75.0, 86.0, 70.0,
+        96.0,
     ];
 
     // Step 1: effects match textbook
@@ -28,7 +28,8 @@ fn montgomery_ex62_full_pipeline() {
 
     // Step 2: ANOVA
     let anova = doe_anova(&design, &responses, &["A", "C", "D", "AC"]).unwrap();
-    let ss_sum: f64 = anova.effects.iter().map(|r| r.sum_of_squares).sum::<f64>() + anova.residual_ss;
+    let ss_sum: f64 =
+        anova.effects.iter().map(|r| r.sum_of_squares).sum::<f64>() + anova.residual_ss;
     assert!(
         (ss_sum - anova.total_ss).abs() < 0.1,
         "SS partition failed: {ss_sum} vs {}",

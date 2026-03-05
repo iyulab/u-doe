@@ -39,8 +39,7 @@ pub fn two_level_factorial_power(
     let se_effect = sigma * 2.0 / total_runs.sqrt();
     let ncp = effect_size / se_effect;
     let z_alpha_half = inverse_normal_cdf(1.0 - alpha / 2.0);
-    let power =
-        standard_normal_cdf(ncp - z_alpha_half) + standard_normal_cdf(-ncp - z_alpha_half);
+    let power = standard_normal_cdf(ncp - z_alpha_half) + standard_normal_cdf(-ncp - z_alpha_half);
     power.clamp(0.0, 1.0)
 }
 
@@ -133,7 +132,10 @@ mod tests {
             assert!(
                 w[1].1 >= w[0].1 - 1e-9,
                 "non-monotone: ({}, {}) -> ({}, {})",
-                w[0].0, w[0].1, w[1].0, w[1].1
+                w[0].0,
+                w[0].1,
+                w[1].0,
+                w[1].1
             );
         }
     }
