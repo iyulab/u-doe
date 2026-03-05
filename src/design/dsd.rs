@@ -237,6 +237,47 @@ mod tests {
         assert!(definitive_screening(13).is_err());
     }
 
+    // -----------------------------------------------------------------------
+    // Reference-value tests (Task 11)
+    // Jones & Nachtsheim (2011), §2-3
+    // -----------------------------------------------------------------------
+
+    /// Run count 2k+1 for all supported k values including boundary cases.
+    #[test]
+    fn run_counts_all_k() {
+        for k in 2..=12 {
+            let d = definitive_screening(k).unwrap();
+            assert_eq!(
+                d.run_count(),
+                2 * k + 1,
+                "k={k}: expected {} runs, got {}",
+                2 * k + 1,
+                d.run_count()
+            );
+        }
+        // Spot-check the task-specified values
+        assert_eq!(definitive_screening(3).unwrap().run_count(), 7);
+        assert_eq!(definitive_screening(4).unwrap().run_count(), 9);
+        assert_eq!(definitive_screening(6).unwrap().run_count(), 13);
+        assert_eq!(definitive_screening(12).unwrap().run_count(), 25);
+    }
+
+    /// Center point (last row) must be all zeros for every supported k.
+    #[test]
+    fn center_row_all_zeros_full_range() {
+        for k in 2..=12 {
+            let d = definitive_screening(k).unwrap();
+            let last = d.run_count() - 1;
+            for c in 0..k {
+                assert!(
+                    d.get(last, c).abs() < 1e-10,
+                    "k={k} center row col={c} is not zero: {}",
+                    d.get(last, c)
+                );
+            }
+        }
+    }
+
     /// For even k, proper Paley conference matrices guarantee pairwise orthogonal
     /// columns in the full 2k+1 run design.
     #[test]

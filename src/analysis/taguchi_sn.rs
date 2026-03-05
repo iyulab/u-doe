@@ -329,4 +329,54 @@ mod tests {
         let effects = sn_factor_effects(&design, &sn).unwrap();
         assert_eq!(effects[0].optimal_level, 2);
     }
+
+    // -----------------------------------------------------------------------
+    // Reference-value tests (Task 10)
+    // Taguchi (1987) §3; Peace (1993) §4
+    // -----------------------------------------------------------------------
+
+    /// SB: y=[1,2,3] → SN = −10·log₁₀((1+4+9)/3) = −10·log₁₀(4.6̄) ≈ −6.690 dB
+    #[test]
+    fn sb_reference_value_minus6_690() {
+        let r = vec![vec![1.0, 2.0, 3.0]];
+        let sn = signal_to_noise(&r, SnGoal::SmallerIsBetter).unwrap();
+        let expected = -10.0_f64 * (14.0_f64 / 3.0).log10(); // ≈ −6.6897
+        assert!(
+            (sn[0] - expected).abs() < 1e-3,
+            "SB reference: got {}, expected {expected}",
+            sn[0]
+        );
+    }
+
+    /// LB: y=[1,2,3] → SN = −10·log₁₀((1+0.25+0.1111̄)/3) ≈ +3.432 dB
+    #[test]
+    fn lb_reference_value_plus3_432() {
+        let r = vec![vec![1.0, 2.0, 3.0]];
+        let sn = signal_to_noise(&r, SnGoal::LargerIsBetter).unwrap();
+        let mean_inv_sq = (1.0_f64 + 0.25 + 1.0 / 9.0) / 3.0;
+        let expected = -10.0_f64 * mean_inv_sq.log10(); // ≈ +3.432
+        assert!(
+            (sn[0] - expected).abs() < 1e-3,
+            "LB reference: got {}, expected {expected}",
+            sn[0]
+        );
+        // Sanity: the exact value is within ±0.001 of 3.432
+        assert!(
+            (sn[0] - 3.432).abs() < 0.001,
+            "LB reference ≠ 3.432: got {}",
+            sn[0]
+        );
+    }
+
+    /// NB: y=[9,10,11] → ȳ=10, s²=1 → SN = 10·log₁₀(100) = 20.0 dB
+    #[test]
+    fn nb_reference_value_20db() {
+        let r = vec![vec![9.0, 10.0, 11.0]];
+        let sn = signal_to_noise(&r, SnGoal::NominalIsBest).unwrap();
+        assert!(
+            (sn[0] - 20.0).abs() < 0.01,
+            "NB reference: got {}, expected 20.0",
+            sn[0]
+        );
+    }
 }

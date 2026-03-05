@@ -155,4 +155,52 @@ mod tests {
         let frac = two_level_factorial_power(4, 1, 1, 1.5, 1.0, 0.05);
         assert!(full > frac, "full={full} frac={frac}");
     }
+
+    // -----------------------------------------------------------------------
+    // Reference-value tests (Task 12)
+    // Cohen (1988) §2; Montgomery (2020) §3.7
+    //
+    // For k=1, p=0 (2^1 = 2 runs per replicate):
+    //   SE_effect = σ·2 / √(n·2)  =  σ / √(n/2)
+    //   ncp       = δ / SE_effect  = δ·√(n/2) / σ
+    //
+    // Setting ncp = z_{α/2} + z_β  with α=0.05, power=0.8:
+    //   z_{α/2}  = 1.960,  z_β = 0.842
+    //   ncp²    = (1.960 + 0.842)² = 7.851
+    //   n/2     = 7.851  →  n = 15.7  →  ceil = 16 replicates
+    // -----------------------------------------------------------------------
+
+    /// required_replicates for k=1, α=0.05, power=0.8, δ=σ=1 must equal 16.
+    /// Reference: n = 2·(z_{α/2}+z_β)²·(σ/δ)² = 2·(1.960+0.842)² ≈ 15.7 → 16
+    #[test]
+    fn required_replicates_reference_n16() {
+        let n = required_replicates(1, 0, 1.0, 1.0, 0.05, 0.80, 50);
+        assert_eq!(n, 16, "expected 16 replicates, got {n}");
+    }
+
+    /// Power at n=16 replicates (k=1, p=0, δ=σ=1, α=0.05) must be ≥ 0.80.
+    /// ncp = 1·√(16/2)/1 = √8 ≈ 2.828; Power = Φ(2.828−1.960) ≈ 0.807
+    #[test]
+    fn power_at_n16_above_080() {
+        let pw = two_level_factorial_power(1, 0, 16, 1.0, 1.0, 0.05);
+        assert!(
+            pw >= 0.80,
+            "expected power ≥ 0.80 at n=16, got {pw}"
+        );
+        // And not too far above (sanity check: below 0.90)
+        assert!(
+            pw < 0.90,
+            "power at n=16 suspiciously high: {pw}"
+        );
+    }
+
+    /// Power at n=15 replicates must be below 0.80 (n=16 is the minimum).
+    #[test]
+    fn power_at_n15_below_080() {
+        let pw = two_level_factorial_power(1, 0, 15, 1.0, 1.0, 0.05);
+        assert!(
+            pw < 0.80,
+            "expected power < 0.80 at n=15, got {pw}"
+        );
+    }
 }
