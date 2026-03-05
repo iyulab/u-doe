@@ -16,3 +16,6 @@ pub mod design;
 pub mod error;
 pub mod optimization;
 pub mod power;
+
+#[cfg(feature = "wasm")]
+pub mod wasm;
