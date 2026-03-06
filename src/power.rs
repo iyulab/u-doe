@@ -183,24 +183,15 @@ mod tests {
     #[test]
     fn power_at_n16_above_080() {
         let pw = two_level_factorial_power(1, 0, 16, 1.0, 1.0, 0.05);
-        assert!(
-            pw >= 0.80,
-            "expected power ≥ 0.80 at n=16, got {pw}"
-        );
+        assert!(pw >= 0.80, "expected power ≥ 0.80 at n=16, got {pw}");
         // And not too far above (sanity check: below 0.90)
-        assert!(
-            pw < 0.90,
-            "power at n=16 suspiciously high: {pw}"
-        );
+        assert!(pw < 0.90, "power at n=16 suspiciously high: {pw}");
     }
 
     /// Power at n=15 replicates must be below 0.80 (n=16 is the minimum).
     #[test]
     fn power_at_n15_below_080() {
         let pw = two_level_factorial_power(1, 0, 15, 1.0, 1.0, 0.05);
-        assert!(
-            pw < 0.80,
-            "expected power < 0.80 at n=15, got {pw}"
-        );
+        assert!(pw < 0.80, "expected power < 0.80 at n=15, got {pw}");
     }
 }
