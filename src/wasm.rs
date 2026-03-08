@@ -11,8 +11,6 @@
 //! u-doe = { version = "...", features = ["wasm"] }
 //! ```
 
-#![cfg(feature = "wasm")]
-
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -247,6 +245,280 @@ pub fn signal_to_noise(responses_json: JsValue, goal: &str) -> Result<JsValue, J
     let sn_values =
         crate::analysis::taguchi_sn::signal_to_noise(&responses, sn_goal).map_err(js_err)?;
     to_js(&sn_values)
+}
+
+// ---------------------------------------------------------------------------
+// P1: Additional design generation
+// ---------------------------------------------------------------------------
+
+/// Generate a 2^(k-p) fractional factorial design.
+///
+/// Uses standard generators from Montgomery (2019) Table 8.14.
+/// Supported: k=4..7, p=1..3 (standard combinations only).
+///
+/// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
+///
+/// # Errors
+/// Returns an error string if the (k, p) combination is not in the standard table.
+#[wasm_bindgen]
+pub fn fractional_factorial(k: usize, p: usize) -> Result<JsValue, JsValue> {
+    let design = crate::design::factorial::fractional_factorial(k, p).map_err(js_err)?;
+    to_js(&DesignMatrixDto::from(design))
+}
+
+/// Generate a Plackett-Burman screening design for `k` factors (1 ≤ k ≤ 19).
+///
+/// Automatically selects the smallest N (multiple of 4) such that N − 1 ≥ k.
+///
+/// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
+///
+/// # Errors
+/// Returns an error string if `k == 0` or `k > 19`.
+#[wasm_bindgen]
+pub fn plackett_burman(k: usize) -> Result<JsValue, JsValue> {
+    let design = crate::design::plackett_burman::plackett_burman(k).map_err(js_err)?;
+    to_js(&DesignMatrixDto::from(design))
+}
+
+// ---------------------------------------------------------------------------
+// P2: Effects estimation
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct EffectEstimateDto {
+    name: String,
+    estimate: f64,
+    sum_of_squares: f64,
+    percent_contribution: f64,
+}
+
+#[derive(Serialize)]
+struct EstimateEffectsResultDto {
+    effects: Vec<EffectEstimateDto>,
+    half_normal: Vec<(f64, f64)>,
+}
+
+/// Estimate main effects and interactions for a 2-level factorial design,
+/// plus half-normal plot data for identifying active effects.
+///
+/// `design_json`: JSON array-of-arrays `[[f64]]` — the coded design matrix (rows = runs).
+/// `responses`: flat array of response values, one per run.
+/// `factor_names_json`: JSON array of factor name strings.
+/// `max_order`: maximum interaction order (1 = main effects only, 2 = + 2FI, 3 = + 3FI).
+///
+/// Returns `{ effects: [{ name, estimate, sum_of_squares, percent_contribution }],
+///            half_normal: [[abs_effect, quantile]] }`.
+///
+/// # Errors
+/// Returns an error string if dimensions do not match or JSON is malformed.
+#[wasm_bindgen]
+pub fn estimate_effects(
+    design_json: JsValue,
+    responses: &[f64],
+    factor_names_json: JsValue,
+    max_order: usize,
+) -> Result<JsValue, JsValue> {
+    let data: Vec<Vec<f64>> = serde_wasm_bindgen::from_value(design_json).map_err(js_err)?;
+    let factor_names: Vec<String> =
+        serde_wasm_bindgen::from_value(factor_names_json).map_err(js_err)?;
+
+    let design = crate::design::DesignMatrix { data, factor_names };
+    let effects =
+        crate::analysis::effects::estimate_effects(&design, responses, max_order)
+            .map_err(js_err)?;
+
+    let half_normal = crate::analysis::effects::half_normal_plot_data(&effects);
+
+    let dto = EstimateEffectsResultDto {
+        effects: effects
+            .into_iter()
+            .map(|e| EffectEstimateDto {
+                name: e.name,
+                estimate: e.estimate,
+                sum_of_squares: e.sum_of_squares,
+                percent_contribution: e.percent_contribution,
+            })
+            .collect(),
+        half_normal,
+    };
+    to_js(&dto)
+}
+
+// ---------------------------------------------------------------------------
+// P2: RSM
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct RsmModelDto {
+    coefficients: Vec<f64>,
+    r_squared: f64,
+    factor_count: usize,
+}
+
+/// Fit a second-order Response Surface Model (RSM) using OLS.
+///
+/// `design_json`: JSON array-of-arrays `[[f64]]` — the coded design matrix.
+/// `responses`: flat array of response values, one per run.
+/// `factor_names_json`: JSON array of factor name strings.
+///
+/// Returns `{ coefficients: [f64], r_squared: f64, factor_count: usize }`.
+/// Coefficient order: [intercept, linear..., quadratic..., interactions...].
+///
+/// # Errors
+/// Returns an error string if dimensions do not match, JSON is malformed,
+/// or the model matrix is singular.
+#[wasm_bindgen]
+pub fn fit_rsm(
+    design_json: JsValue,
+    responses: &[f64],
+    factor_names_json: JsValue,
+) -> Result<JsValue, JsValue> {
+    let data: Vec<Vec<f64>> = serde_wasm_bindgen::from_value(design_json).map_err(js_err)?;
+    let factor_names: Vec<String> =
+        serde_wasm_bindgen::from_value(factor_names_json).map_err(js_err)?;
+
+    let design = crate::design::DesignMatrix { data, factor_names };
+    let model = crate::analysis::rsm::fit_rsm(&design, responses).map_err(js_err)?;
+
+    let dto = RsmModelDto {
+        coefficients: model.coefficients,
+        r_squared: model.r_squared,
+        factor_count: model.factor_count,
+    };
+    to_js(&dto)
+}
+
+#[derive(Serialize)]
+struct AscentStepDto {
+    coded: Vec<f64>,
+    step_number: usize,
+}
+
+#[derive(Serialize)]
+struct SteepestAscentResultDto {
+    steps: Vec<AscentStepDto>,
+}
+
+/// Compute the steepest ascent path from a fitted RSM model.
+///
+/// `coefficients_json`: JSON array of model coefficients (from `fit_rsm`).
+/// `factor_count`: number of factors in the model.
+/// `n_steps`: number of steps along the ascent path.
+/// `step_size`: step size in coded units.
+///
+/// Returns `{ steps: [{ coded: [f64], step_number: usize }] }`.
+#[wasm_bindgen]
+pub fn steepest_ascent(
+    coefficients_json: JsValue,
+    factor_count: usize,
+    n_steps: usize,
+    step_size: f64,
+) -> Result<JsValue, JsValue> {
+    let coefficients: Vec<f64> =
+        serde_wasm_bindgen::from_value(coefficients_json).map_err(js_err)?;
+
+    let model = crate::analysis::rsm::RsmModel {
+        coefficients,
+        r_squared: 0.0, // not used by steepest_ascent
+        factor_count,
+    };
+
+    let steps = crate::analysis::rsm::steepest_ascent(&model, n_steps, step_size);
+
+    let dto = SteepestAscentResultDto {
+        steps: steps
+            .into_iter()
+            .map(|s| AscentStepDto {
+                coded: s.coded,
+                step_number: s.step_number,
+            })
+            .collect(),
+    };
+    to_js(&dto)
+}
+
+// ---------------------------------------------------------------------------
+// P2: Desirability
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct ResponseSpecInput {
+    goal: String,
+    lower: f64,
+    target: f64,
+    upper: f64,
+    s1: f64,
+    s2: f64,
+}
+
+#[derive(Serialize)]
+struct DesirabilityResultDto {
+    individual: Vec<f64>,
+    overall: f64,
+}
+
+/// Compute Derringer-Suich desirability for multiple responses.
+///
+/// `specs_json`: JSON array of response specifications, each:
+///   `{ goal: "Maximize"|"Minimize"|"Target", lower, target, upper, s1, s2 }`
+/// `responses`: flat array of observed response values (one per spec).
+///
+/// Returns `{ individual: [f64], overall: f64 }`.
+///
+/// # Errors
+/// Returns an error string if JSON is malformed, specs/responses length mismatch,
+/// or goal string is unrecognised.
+#[wasm_bindgen]
+pub fn desirability(specs_json: JsValue, responses: &[f64]) -> Result<JsValue, JsValue> {
+    let inputs: Vec<ResponseSpecInput> =
+        serde_wasm_bindgen::from_value(specs_json).map_err(js_err)?;
+
+    if inputs.len() != responses.len() {
+        return Err(js_err(format!(
+            "specs length ({}) does not match responses length ({})",
+            inputs.len(),
+            responses.len()
+        )));
+    }
+
+    let specs: Vec<crate::optimization::desirability::ResponseSpec> = inputs
+        .into_iter()
+        .map(|input| {
+            let goal = match input.goal.as_str() {
+                "Maximize" => crate::optimization::desirability::GoalType::Maximize,
+                "Minimize" => crate::optimization::desirability::GoalType::Minimize,
+                "Target" => crate::optimization::desirability::GoalType::Target,
+                other => {
+                    return Err(js_err(format!(
+                        "unknown goal '{}'; expected Maximize, Minimize, or Target",
+                        other
+                    )))
+                }
+            };
+            Ok(crate::optimization::desirability::ResponseSpec {
+                goal,
+                lower: input.lower,
+                target: input.target,
+                upper: input.upper,
+                s1: input.s1,
+                s2: input.s2,
+            })
+        })
+        .collect::<Result<Vec<_>, JsValue>>()?;
+
+    let individual: Vec<f64> = specs
+        .iter()
+        .zip(responses.iter())
+        .map(|(spec, &y)| spec.desirability(y))
+        .collect();
+
+    let overall = crate::optimization::desirability::overall_desirability(&specs, responses);
+
+    let dto = DesirabilityResultDto {
+        individual,
+        overall,
+    };
+    to_js(&dto)
 }
 
 // ---------------------------------------------------------------------------
