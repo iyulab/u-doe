@@ -323,9 +323,8 @@ pub fn estimate_effects(
         serde_wasm_bindgen::from_value(factor_names_json).map_err(js_err)?;
 
     let design = crate::design::DesignMatrix { data, factor_names };
-    let effects =
-        crate::analysis::effects::estimate_effects(&design, responses, max_order)
-            .map_err(js_err)?;
+    let effects = crate::analysis::effects::estimate_effects(&design, responses, max_order)
+        .map_err(js_err)?;
 
     let half_normal = crate::analysis::effects::half_normal_plot_data(&effects);
 
