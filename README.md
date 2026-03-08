@@ -121,6 +121,115 @@ println!("Required replicates: {n}");
 - Jones, B. & Nachtsheim, C.J. (2011). A Class of Three-Level Designs for Definitive Screening in the Presence of Second-Order Effects. *Journal of Quality Technology* 43(1), 1–15.
 - Taguchi, G. (1986). *Introduction to Quality Engineering*. Asian Productivity Organization.
 
+## WebAssembly / npm
+
+Available as an npm package via [wasm-pack](https://rustwasm.github.io/wasm-pack/).
+
+```bash
+npm install @iyulab/u-doe
+```
+
+### Quick Start
+
+```javascript
+import init, { full_factorial, doe_anova } from '@iyulab/u-doe';
+
+await init();
+const design = full_factorial(3); // 2^3 = 8 runs
+```
+
+### Functions
+
+#### `full_factorial(k) -> DesignMatrix`
+
+Generate a 2^k full factorial design (k = 1..7).
+
+**Output:**
+```json
+{ "data": [[...]], "factor_names": ["X1","X2"], "run_count": 4, "factor_count": 2 }
+```
+
+#### `fractional_factorial(k, p) -> DesignMatrix`
+
+Generate a 2^(k-p) fractional factorial design (k = 4..7, p = 1..3).
+
+#### `plackett_burman(k) -> DesignMatrix`
+
+Generate a Plackett-Burman screening design (k = 1..19).
+
+#### `ccd(k, design_type, n_center) -> DesignMatrix`
+
+Generate a Central Composite Design. `design_type`: `"FaceCentered"` | `"Rotatable"` | `"Inscribed"`. k = 2..6.
+
+#### `box_behnken(k, n_center) -> DesignMatrix`
+
+Generate a Box-Behnken design (k = 3, 4, or 5).
+
+#### `taguchi_array(name, k) -> DesignMatrix`
+
+Get a Taguchi orthogonal array. `name`: `"L4"` | `"L8"` | `"L9"` | `"L12"` | `"L16"` | `"L18"` | `"L27"`.
+
+#### `definitive_screening(k) -> DesignMatrix`
+
+Generate a Definitive Screening Design (k = 2..12).
+
+#### `doe_anova(design, responses, factor_names, effect_names) -> AnovaResult`
+
+Perform DOE ANOVA on a coded design matrix.
+
+**Input:** `design`: `[[f64]]`, `responses`: `Float64Array`, `factor_names`: `["A","B"]`, `effect_names`: `["A","B","AB"]`
+
+**Output:**
+```json
+{ "effects": [{ "name": "A", "sum_of_squares": 10.0, "df": 1, "mean_square": 10.0, "f_statistic": 5.0, "p_value": 0.03 }], "residual_ss": 4.0, "residual_df": 2, "total_ss": 14.0, "r_squared": 0.71, "r_squared_adj": 0.57 }
+```
+
+#### `signal_to_noise(responses, goal) -> [f64]`
+
+Compute Taguchi S/N ratios. `responses`: `[[f64]]` (replicates per run). `goal`: `"LargerIsBetter"` | `"SmallerIsBetter"` | `"NominalIsBest"`.
+
+#### `estimate_effects(design, responses, factor_names, max_order) -> EffectsResult`
+
+Estimate main effects and interactions for a 2-level factorial design.
+
+**Output:**
+```json
+{ "effects": [{ "name": "A", "estimate": 21.6, "sum_of_squares": 1870.6, "percent_contribution": 45.2 }], "half_normal": [[21.6, 1.15]] }
+```
+
+#### `fit_rsm(design, responses, factor_names) -> RsmModel`
+
+Fit a second-order Response Surface Model via OLS.
+
+**Output:**
+```json
+{ "coefficients": [10.0, 2.5, -1.3, 0.5, 0.8, -0.2], "r_squared": 0.95, "factor_count": 2 }
+```
+
+#### `steepest_ascent(coefficients, factor_count, n_steps, step_size) -> AscentResult`
+
+Compute the steepest ascent path from a fitted RSM model.
+
+**Output:**
+```json
+{ "steps": [{ "coded": [0.5, 0.3], "step_number": 1 }] }
+```
+
+#### `desirability(specs, responses) -> DesirabilityResult`
+
+Compute Derringer-Suich desirability for multiple responses.
+
+**Input:** `specs`: `[{ "goal": "Maximize"|"Minimize"|"Target", "lower": 0, "target": 100, "upper": 100, "s1": 1, "s2": 1 }]`, `responses`: `Float64Array`
+
+**Output:**
+```json
+{ "individual": [0.8, 0.6], "overall": 0.69 }
+```
+
+#### `two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha) -> f64`
+
+Compute statistical power of a 2^(k-p) factorial design. Returns power in [0, 1].
+
 ## Related
 
 - [`u-analytics`](https://crates.io/crates/u-analytics) — SPC, process capability, statistical analysis
