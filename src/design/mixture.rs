@@ -73,7 +73,13 @@ pub fn simplex_centroid(q: usize) -> DesignMatrix {
     for mask in 1..=(n_points as u64) {
         let count = mask.count_ones() as f64;
         let row: Vec<f64> = (0..q)
-            .map(|i| if (mask >> i) & 1 == 1 { 1.0 / count } else { 0.0 })
+            .map(|i| {
+                if (mask >> i) & 1 == 1 {
+                    1.0 / count
+                } else {
+                    0.0
+                }
+            })
             .collect();
         rows.push(row);
     }
@@ -127,10 +133,7 @@ mod tests {
     fn rows_sum_to_one(d: &DesignMatrix) {
         for (i, row) in d.data.iter().enumerate() {
             let s: f64 = row.iter().sum();
-            assert!(
-                (s - 1.0).abs() < 1e-10,
-                "run {i} sums to {s}, expected 1.0"
-            );
+            assert!((s - 1.0).abs() < 1e-10, "run {i} sums to {s}, expected 1.0");
         }
     }
 
