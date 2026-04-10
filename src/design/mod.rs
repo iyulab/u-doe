@@ -4,6 +4,7 @@ pub mod box_behnken;
 pub mod ccd;
 pub mod dsd;
 pub mod factorial;
+pub mod mixture;
 pub mod plackett_burman;
 pub mod taguchi;
 

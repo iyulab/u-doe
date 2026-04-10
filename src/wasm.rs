@@ -280,6 +280,35 @@ pub fn plackett_burman(k: usize) -> Result<JsValue, JsValue> {
     to_js(&DesignMatrixDto::from(design))
 }
 
+/// Generate a Simplex Lattice Design {q, m} for mixture experiments.
+///
+/// Each of the `q` components takes values in {0, 1/m, 2/m, ..., 1} subject
+/// to the constraint that all components sum to 1.0 for every run.
+///
+/// Run count: C(q + m − 1, m)  (e.g. {3,2} → 6 runs, {3,3} → 10 runs).
+///
+/// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
+/// Factor names are "X1", "X2", ..., "Xq".
+#[wasm_bindgen]
+pub fn simplex_lattice(q: usize, m: usize) -> Result<JsValue, JsValue> {
+    let design = crate::design::mixture::simplex_lattice(q, m);
+    to_js(&DesignMatrixDto::from(design))
+}
+
+/// Generate a Simplex Centroid Design for `q`-component mixture experiments.
+///
+/// Produces 2^q − 1 points: the centroid of every non-empty subset of the
+/// q components.  Example: q=3 → 7 points (3 vertices + 3 edge midpoints +
+/// 1 overall centroid), q=4 → 15 points.
+///
+/// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
+/// Factor names are "X1", "X2", ..., "Xq".
+#[wasm_bindgen]
+pub fn simplex_centroid(q: usize) -> Result<JsValue, JsValue> {
+    let design = crate::design::mixture::simplex_centroid(q);
+    to_js(&DesignMatrixDto::from(design))
+}
+
 // ---------------------------------------------------------------------------
 // P2: Effects estimation
 // ---------------------------------------------------------------------------
