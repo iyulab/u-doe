@@ -26,6 +26,22 @@ fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(value).map_err(js_err)
 }
 
+/// Deserialize a native JS value, rejecting JSON strings with an actionable
+/// message and prefixing the offending parameter name to any serde error.
+///
+/// Guards against the legacy JSON-string convention: passing
+/// `JSON.stringify(...)` used to fail deep inside serde-wasm-bindgen with an
+/// opaque `TypeError: Reflect.get called on non-object`.
+fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Result<T, JsValue> {
+    if value.as_string().is_some() {
+        return Err(JsValue::from_str(&format!(
+            "{param}: expected a native JS array/object, got a string — \
+             pass the value directly, not JSON.stringify(...)"
+        )));
+    }
+    serde_wasm_bindgen::from_value(value).map_err(|e| JsValue::from_str(&format!("{param}: {e}")))
+}
+
 // ---------------------------------------------------------------------------
 // DTO types
 // ---------------------------------------------------------------------------
@@ -163,28 +179,27 @@ pub fn definitive_screening(k: usize) -> Result<JsValue, JsValue> {
 
 /// Perform DOE ANOVA.
 ///
-/// `design_json`: JSON array-of-arrays `[[f64]]` — the coded design matrix (rows = runs).
+/// `design`: native array-of-arrays `[[f64]]` — the coded design matrix (rows = runs).
 /// `responses`: flat array of response values, one per run.
-/// `factor_names_json`: JSON array of factor name strings used as column labels.
-/// `effect_names_json`: JSON array of effect names to include (e.g. `["A","B","AB"]`).
+/// `factor_names`: native array of factor name strings used as column labels.
+/// `effect_names`: native array of effect names to include (e.g. `["A","B","A:B"]`).
 ///
 /// Returns an ANOVA result object with `effects`, `residual_ss`, `residual_df`,
 /// `total_ss`, `r_squared`, `r_squared_adj`.
 ///
 /// # Errors
-/// Returns an error string if dimensions do not match or JSON is malformed.
+/// Returns an error string if dimensions do not match or an argument has the
+/// wrong shape (arguments are native JS values, not JSON strings).
 #[wasm_bindgen]
 pub fn doe_anova(
-    design_json: JsValue,
+    design: JsValue,
     responses: &[f64],
-    factor_names_json: JsValue,
-    effect_names_json: JsValue,
+    factor_names: JsValue,
+    effect_names: JsValue,
 ) -> Result<JsValue, JsValue> {
-    let data: Vec<Vec<f64>> = serde_wasm_bindgen::from_value(design_json).map_err(js_err)?;
-    let factor_names: Vec<String> =
-        serde_wasm_bindgen::from_value(factor_names_json).map_err(js_err)?;
-    let effect_names: Vec<String> =
-        serde_wasm_bindgen::from_value(effect_names_json).map_err(js_err)?;
+    let data: Vec<Vec<f64>> = from_js(design, "design")?;
+    let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
+    let effect_names: Vec<String> = from_js(effect_names, "effect_names")?;
 
     let design = crate::design::DesignMatrix { data, factor_names };
     let effect_refs: Vec<&str> = effect_names.iter().map(|s| s.as_str()).collect();
@@ -216,7 +231,7 @@ pub fn doe_anova(
 
 /// Compute Taguchi Signal-to-Noise ratios.
 ///
-/// `responses_json`: JSON array-of-arrays `[[f64]]` — one inner array per run,
+/// `responses`: native array-of-arrays `[[f64]]` — one inner array per run,
 ///   containing the replicate measurements for that run.
 /// `goal`: `"LargerIsBetter"` | `"SmallerIsBetter"` | `"NominalIsBest"`
 ///
@@ -226,9 +241,8 @@ pub fn doe_anova(
 /// Returns an error string if the goal string is unrecognised, or if the
 /// response data violates the requirements for the chosen goal.
 #[wasm_bindgen]
-pub fn signal_to_noise(responses_json: JsValue, goal: &str) -> Result<JsValue, JsValue> {
-    let responses: Vec<Vec<f64>> =
-        serde_wasm_bindgen::from_value(responses_json).map_err(js_err)?;
+pub fn signal_to_noise(responses: JsValue, goal: &str) -> Result<JsValue, JsValue> {
+    let responses: Vec<Vec<f64>> = from_js(responses, "responses")?;
 
     let sn_goal = match goal {
         "LargerIsBetter" => crate::analysis::taguchi_sn::SnGoal::LargerIsBetter,
@@ -316,6 +330,7 @@ pub fn simplex_centroid(q: usize) -> Result<JsValue, JsValue> {
 #[derive(Serialize)]
 struct EffectEstimateDto {
     name: String,
+    columns: Vec<usize>,
     estimate: f64,
     sum_of_squares: f64,
     percent_contribution: f64,
@@ -330,26 +345,26 @@ struct EstimateEffectsResultDto {
 /// Estimate main effects and interactions for a 2-level factorial design,
 /// plus half-normal plot data for identifying active effects.
 ///
-/// `design_json`: JSON array-of-arrays `[[f64]]` — the coded design matrix (rows = runs).
+/// `design`: native array-of-arrays `[[f64]]` — the coded design matrix (rows = runs).
 /// `responses`: flat array of response values, one per run.
-/// `factor_names_json`: JSON array of factor name strings.
+/// `factor_names`: native array of factor name strings.
 /// `max_order`: maximum interaction order (1 = main effects only, 2 = + 2FI, 3 = + 3FI).
 ///
-/// Returns `{ effects: [{ name, estimate, sum_of_squares, percent_contribution }],
+/// Returns `{ effects: [{ name, columns, estimate, sum_of_squares, percent_contribution }],
 ///            half_normal: [[abs_effect, quantile]] }`.
 ///
 /// # Errors
-/// Returns an error string if dimensions do not match or JSON is malformed.
+/// Returns an error string if dimensions do not match or an argument has the
+/// wrong shape (arguments are native JS values, not JSON strings).
 #[wasm_bindgen]
 pub fn estimate_effects(
-    design_json: JsValue,
+    design: JsValue,
     responses: &[f64],
-    factor_names_json: JsValue,
+    factor_names: JsValue,
     max_order: usize,
 ) -> Result<JsValue, JsValue> {
-    let data: Vec<Vec<f64>> = serde_wasm_bindgen::from_value(design_json).map_err(js_err)?;
-    let factor_names: Vec<String> =
-        serde_wasm_bindgen::from_value(factor_names_json).map_err(js_err)?;
+    let data: Vec<Vec<f64>> = from_js(design, "design")?;
+    let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
 
     let design = crate::design::DesignMatrix { data, factor_names };
     let effects = crate::analysis::effects::estimate_effects(&design, responses, max_order)
@@ -362,6 +377,7 @@ pub fn estimate_effects(
             .into_iter()
             .map(|e| EffectEstimateDto {
                 name: e.name,
+                columns: e.columns,
                 estimate: e.estimate,
                 sum_of_squares: e.sum_of_squares,
                 percent_contribution: e.percent_contribution,
@@ -385,25 +401,25 @@ struct RsmModelDto {
 
 /// Fit a second-order Response Surface Model (RSM) using OLS.
 ///
-/// `design_json`: JSON array-of-arrays `[[f64]]` — the coded design matrix.
+/// `design`: native array-of-arrays `[[f64]]` — the coded design matrix.
 /// `responses`: flat array of response values, one per run.
-/// `factor_names_json`: JSON array of factor name strings.
+/// `factor_names`: native array of factor name strings.
 ///
 /// Returns `{ coefficients: [f64], r_squared: f64, factor_count: usize }`.
 /// Coefficient order: [intercept, linear..., quadratic..., interactions...].
 ///
 /// # Errors
-/// Returns an error string if dimensions do not match, JSON is malformed,
+/// Returns an error string if dimensions do not match, an argument has the
+/// wrong shape (arguments are native JS values, not JSON strings),
 /// or the model matrix is singular.
 #[wasm_bindgen]
 pub fn fit_rsm(
-    design_json: JsValue,
+    design: JsValue,
     responses: &[f64],
-    factor_names_json: JsValue,
+    factor_names: JsValue,
 ) -> Result<JsValue, JsValue> {
-    let data: Vec<Vec<f64>> = serde_wasm_bindgen::from_value(design_json).map_err(js_err)?;
-    let factor_names: Vec<String> =
-        serde_wasm_bindgen::from_value(factor_names_json).map_err(js_err)?;
+    let data: Vec<Vec<f64>> = from_js(design, "design")?;
+    let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
 
     let design = crate::design::DesignMatrix { data, factor_names };
     let model = crate::analysis::rsm::fit_rsm(&design, responses).map_err(js_err)?;
@@ -429,7 +445,7 @@ struct SteepestAscentResultDto {
 
 /// Compute the steepest ascent path from a fitted RSM model.
 ///
-/// `coefficients_json`: JSON array of model coefficients (from `fit_rsm`).
+/// `coefficients`: native array of model coefficients (from `fit_rsm`).
 /// `factor_count`: number of factors in the model.
 /// `n_steps`: number of steps along the ascent path.
 /// `step_size`: step size in coded units.
@@ -437,13 +453,12 @@ struct SteepestAscentResultDto {
 /// Returns `{ steps: [{ coded: [f64], step_number: usize }] }`.
 #[wasm_bindgen]
 pub fn steepest_ascent(
-    coefficients_json: JsValue,
+    coefficients: JsValue,
     factor_count: usize,
     n_steps: usize,
     step_size: f64,
 ) -> Result<JsValue, JsValue> {
-    let coefficients: Vec<f64> =
-        serde_wasm_bindgen::from_value(coefficients_json).map_err(js_err)?;
+    let coefficients: Vec<f64> = from_js(coefficients, "coefficients")?;
 
     let model = crate::analysis::rsm::RsmModel {
         coefficients,
@@ -487,19 +502,19 @@ struct DesirabilityResultDto {
 
 /// Compute Derringer-Suich desirability for multiple responses.
 ///
-/// `specs_json`: JSON array of response specifications, each:
+/// `specs`: native array of response specification objects, each:
 ///   `{ goal: "Maximize"|"Minimize"|"Target", lower, target, upper, s1, s2 }`
 /// `responses`: flat array of observed response values (one per spec).
 ///
 /// Returns `{ individual: [f64], overall: f64 }`.
 ///
 /// # Errors
-/// Returns an error string if JSON is malformed, specs/responses length mismatch,
-/// or goal string is unrecognised.
+/// Returns an error string if `specs` has the wrong shape (native JS values,
+/// not JSON strings), specs/responses length mismatch, or goal string is
+/// unrecognised.
 #[wasm_bindgen]
-pub fn desirability(specs_json: JsValue, responses: &[f64]) -> Result<JsValue, JsValue> {
-    let inputs: Vec<ResponseSpecInput> =
-        serde_wasm_bindgen::from_value(specs_json).map_err(js_err)?;
+pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValue> {
+    let inputs: Vec<ResponseSpecInput> = from_js(specs, "specs")?;
 
     if inputs.len() != responses.len() {
         return Err(js_err(format!(

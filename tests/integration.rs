@@ -24,10 +24,10 @@ fn montgomery_ex62_full_pipeline() {
     assert!((find("A") - 21.625).abs() < 0.001);
     assert!((find("C") - 9.875).abs() < 0.001);
     assert!((find("D") - 14.625).abs() < 0.001);
-    assert!((find("AC") - (-18.125)).abs() < 0.001);
+    assert!((find("A:C") - (-18.125)).abs() < 0.001);
 
     // Step 2: ANOVA
-    let anova = doe_anova(&design, &responses, &["A", "C", "D", "AC"]).unwrap();
+    let anova = doe_anova(&design, &responses, &["A", "C", "D", "A:C"]).unwrap();
     let ss_sum: f64 =
         anova.effects.iter().map(|r| r.sum_of_squares).sum::<f64>() + anova.residual_ss;
     assert!(
@@ -39,7 +39,7 @@ fn montgomery_ex62_full_pipeline() {
 
     // Step 3: significant effects (A, D, AC clearly significant at α=0.05;
     // C is marginally active — significant at α=0.10 per Montgomery Table 6.9)
-    let clearly_significant = ["A", "D", "AC"];
+    let clearly_significant = ["A", "D", "A:C"];
     for row in &anova.effects {
         if clearly_significant.contains(&row.name.as_str()) {
             if let Some(p) = row.p_value {

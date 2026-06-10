@@ -27,8 +27,15 @@ use crate::{design::DesignMatrix, error::DoeError};
 /// Estimated effect for a factorial design term.
 #[derive(Debug, Clone)]
 pub struct EffectEstimate {
-    /// Term name: "A", "B", "AB", "ACD", etc.
+    /// Term name: factor names joined with `":"` — "A", "B", "A:B", "A:C:D", etc.
+    ///
+    /// The `":"` separator (R/JMP convention) keeps interaction names
+    /// unambiguous for arbitrary factor names. For structured access use
+    /// [`columns`](Self::columns) instead of parsing this string.
     pub name: String,
+    /// Design-matrix column indices of the factors in this term
+    /// (one index for main effects, two for 2FI, three for 3FI).
+    pub columns: Vec<usize>,
     /// Effect estimate (in response units).
     pub estimate: f64,
     /// Sum of squares attributed to this effect.
@@ -57,7 +64,7 @@ pub struct EffectEstimate {
 /// let design = full_factorial(2).unwrap();
 /// let responses = vec![28.0, 36.0, 18.0, 31.0];
 /// let effects = estimate_effects(&design, &responses, 2).unwrap();
-/// assert_eq!(effects.len(), 3); // A, B, AB
+/// assert_eq!(effects.len(), 3); // A, B, A:B
 /// ```
 pub fn estimate_effects(
     design: &DesignMatrix,
@@ -83,7 +90,7 @@ pub fn estimate_effects(
 
     let mut estimates = Vec::with_capacity(terms.len());
 
-    for term in &terms {
+    for term in terms {
         // Contrast column = product of factor columns for this term
         let contrast: Vec<f64> = (0..n)
             .map(|run| term.iter().map(|&col| design.get(run, col)).product())
@@ -107,7 +114,8 @@ pub fn estimate_effects(
         };
 
         estimates.push(EffectEstimate {
-            name: term_name(term, &design.factor_names),
+            name: term_name(&term, &design.factor_names),
+            columns: term,
             estimate: effect,
             sum_of_squares: ss,
             percent_contribution: pct,
@@ -183,11 +191,15 @@ fn build_terms(k: usize, max_order: usize) -> Vec<Vec<usize>> {
 }
 
 /// Build term name from column indices and factor names.
+///
+/// Joins with `":"` (R/JMP convention) so interaction names stay parseable
+/// for arbitrary factor names — bare concatenation ("AB") is ambiguous as
+/// soon as factor names exceed one character.
 fn term_name(cols: &[usize], factor_names: &[String]) -> String {
     cols.iter()
         .map(|&c| factor_names[c].as_str())
         .collect::<Vec<_>>()
-        .join("")
+        .join(":")
 }
 
 /// Approximate inverse normal CDF (Acklam rational approximation).
@@ -290,9 +302,14 @@ mod tests {
         let design = full_factorial(4).unwrap();
         let responses = montgomery_ex_6_2_responses();
         let effects = estimate_effects(&design, &responses, 2).unwrap();
-        let ac = effects.iter().find(|e| e.name == "AC").unwrap();
+        let ac = effects.iter().find(|e| e.name == "A:C").unwrap();
         // Montgomery Table 6.8: AC = -18.125
-        assert!((ac.estimate - (-18.125)).abs() < 0.01, "AC={}", ac.estimate);
+        assert_eq!(ac.columns, vec![0, 2]);
+        assert!(
+            (ac.estimate - (-18.125)).abs() < 0.01,
+            "A:C={}",
+            ac.estimate
+        );
     }
 
     #[test]
@@ -336,18 +353,21 @@ mod tests {
         let effects = vec![
             EffectEstimate {
                 name: "A".into(),
+                columns: vec![0],
                 estimate: -5.0,
                 sum_of_squares: 25.0,
                 percent_contribution: 50.0,
             },
             EffectEstimate {
                 name: "B".into(),
+                columns: vec![1],
                 estimate: 2.0,
                 sum_of_squares: 4.0,
                 percent_contribution: 8.0,
             },
             EffectEstimate {
                 name: "C".into(),
+                columns: vec![2],
                 estimate: -1.0,
                 sum_of_squares: 1.0,
                 percent_contribution: 2.0,

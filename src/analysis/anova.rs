@@ -11,7 +11,7 @@ use crate::{analysis::effects::estimate_effects, design::DesignMatrix, error::Do
 /// One row in the ANOVA table.
 #[derive(Debug, Clone)]
 pub struct EffectRow {
-    /// Effect name (e.g. "A", "AB").
+    /// Effect name (e.g. "A", "A:B" — factor names joined with `":"`).
     pub name: String,
     /// Sum of squares for this effect.
     pub sum_of_squares: f64,
@@ -48,11 +48,14 @@ pub struct DoeAnovaResult {
 /// # Arguments
 /// * `design`       — Experimental design matrix (coded ±1 values)
 /// * `responses`    — Observed response values, one per run
-/// * `effect_names` — Names of effects to include (e.g. `&["A", "B", "AB"]`)
+/// * `effect_names` — Names of effects to include (e.g. `&["A", "B", "A:B"]`).
+///   Interaction names join factor names with `":"`.
 ///
 /// # Errors
 ///
-/// Returns `Err` if `responses.len() != design.run_count()`.
+/// Returns `Err` if `responses.len() != design.run_count()`, or
+/// [`DoeError::UnknownEffect`] if an entry in `effect_names` does not match
+/// any estimable effect (main effects and two-factor interactions).
 ///
 /// # Examples
 ///
@@ -86,11 +89,20 @@ pub fn doe_anova(
     let total_ss: f64 = responses.iter().map(|&y| (y - grand_mean).powi(2)).sum();
     let total_df = n - 1;
 
-    // Filter to requested effects (unknown names are silently skipped)
+    // Resolve requested effects — an unknown name is an error, not a silent
+    // skip: silently dropping a term yields a structurally different model
+    // with no signal to the caller.
     let selected: Vec<_> = effect_names
         .iter()
-        .filter_map(|&name| all_effects.iter().find(|e| e.name == name))
-        .collect();
+        .map(|&name| {
+            all_effects
+                .iter()
+                .find(|e| e.name == name)
+                .ok_or_else(|| DoeError::UnknownEffect {
+                    name: name.to_string(),
+                })
+        })
+        .collect::<Result<_, _>>()?;
 
     let model_ss: f64 = selected.iter().map(|e| e.sum_of_squares).sum();
     let model_df = selected.len();
@@ -279,7 +291,7 @@ mod tests {
         let result = doe_anova(
             &design,
             &montgomery_responses(),
-            &["A", "B", "C", "D", "AC"],
+            &["A", "B", "C", "D", "A:C"],
         )
         .unwrap();
         let row_a = result.effects.iter().find(|r| r.name == "A").unwrap();
@@ -290,7 +302,7 @@ mod tests {
     #[test]
     fn anova_r_squared_reasonable() {
         let design = full_factorial(4).unwrap();
-        let result = doe_anova(&design, &montgomery_responses(), &["A", "C", "D", "AC"]).unwrap();
+        let result = doe_anova(&design, &montgomery_responses(), &["A", "C", "D", "A:C"]).unwrap();
         // A, C, D, AC explain ~77% of total variance in this dataset
         assert!(result.r_squared > 0.70, "R²={}", result.r_squared);
     }
@@ -298,7 +310,7 @@ mod tests {
     #[test]
     fn anova_ss_partition() {
         let design = full_factorial(4).unwrap();
-        let result = doe_anova(&design, &montgomery_responses(), &["A", "C", "D", "AC"]).unwrap();
+        let result = doe_anova(&design, &montgomery_responses(), &["A", "C", "D", "A:C"]).unwrap();
         let ss_model: f64 = result.effects.iter().map(|r| r.sum_of_squares).sum();
         let recon = ss_model + result.residual_ss;
         assert!(
@@ -315,13 +327,19 @@ mod tests {
     }
 
     #[test]
-    fn anova_unknown_effect_ignored() {
-        // Unknown effect names should be silently skipped or return error
-        // (implementation choice — test that it doesn't panic)
+    fn anova_unknown_effect_errors() {
         let design = full_factorial(2).unwrap();
         let responses = vec![10.0, 20.0, 30.0, 40.0];
-        let result = doe_anova(&design, &responses, &["A", "B"]);
-        assert!(result.is_ok());
+        // Valid names succeed
+        assert!(doe_anova(&design, &responses, &["A", "B", "A:B"]).is_ok());
+        // Unknown name errors instead of silently producing a smaller model
+        let err = doe_anova(&design, &responses, &["A", "Z"]).unwrap_err();
+        assert_eq!(
+            err,
+            crate::error::DoeError::UnknownEffect { name: "Z".into() }
+        );
+        // Legacy separator-less interaction names are unknown (renamed in 0.5.0)
+        assert!(doe_anova(&design, &responses, &["AB"]).is_err());
     }
 
     #[test]

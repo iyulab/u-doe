@@ -138,6 +138,10 @@ await init();
 const design = full_factorial(3); // 2^3 = 8 runs
 ```
 
+> **Note:** All analysis functions take **native JS arrays/objects** — pass values
+> directly, not `JSON.stringify(...)` strings. A string argument is rejected with a
+> descriptive error naming the offending parameter.
+
 ### Functions
 
 #### `full_factorial(k) -> DesignMatrix`
@@ -177,7 +181,9 @@ Generate a Definitive Screening Design (k = 2..12).
 
 Perform DOE ANOVA on a coded design matrix.
 
-**Input:** `design`: `[[f64]]`, `responses`: `Float64Array`, `factor_names`: `["A","B"]`, `effect_names`: `["A","B","AB"]`
+**Input:** `design`: `[[f64]]`, `responses`: `Float64Array`, `factor_names`: `["A","B"]`, `effect_names`: `["A","B","A:B"]`
+
+Interaction effect names join factor names with `":"` (e.g. `"A:B"`). An unknown entry in `effect_names` is an error (since 0.5.0; previously silently skipped).
 
 **Output:**
 ```json
@@ -194,8 +200,14 @@ Estimate main effects and interactions for a 2-level factorial design.
 
 **Output:**
 ```json
-{ "effects": [{ "name": "A", "estimate": 21.6, "sum_of_squares": 1870.6, "percent_contribution": 45.2 }], "half_normal": [[21.6, 1.15]] }
+{ "effects": [
+    { "name": "A",   "columns": [0],    "estimate": 21.6,  "sum_of_squares": 1870.6, "percent_contribution": 45.2 },
+    { "name": "A:C", "columns": [0, 2], "estimate": -18.1, "sum_of_squares": 1314.1, "percent_contribution": 31.7 }
+  ],
+  "half_normal": [[18.1, 0.57], [21.6, 1.15]] }
 ```
+
+Interaction names join factor names with `":"` (since 0.5.0; previously bare concatenation `"AC"`). `columns` holds the design-matrix column indices of the term's factors — use it for display formatting (e.g. `"A × C"`) instead of parsing `name`.
 
 #### `fit_rsm(design, responses, factor_names) -> RsmModel`
 
