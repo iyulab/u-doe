@@ -6,7 +6,7 @@ authors = ["iyulab"]
 license = "MIT"
 description = "Design of Experiments (DOE) framework: factorial, Plackett-Burman, CCD, Box-Behnken, Taguchi, effects analysis, RSM, and desirability optimization."
 repository = "https://github.com/iyulab/u-doe"
-keywords = ["doe", "design-of-experiments", "rsm", "factorial", "statistics"]
+keywords = ["doe", "experimental-design", "rsm", "factorial", "statistics"]
 categories = ["science", "mathematics"]
 readme = "README.md"
 
