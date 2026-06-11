@@ -39,7 +39,12 @@ fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Resul
              pass the value directly, not JSON.stringify(...)"
         )));
     }
-    serde_wasm_bindgen::from_value(value).map_err(|e| JsValue::from_str(&format!("{param}: {e}")))
+    // serde-wasm-bindgen reads only a struct's declared fields from a JS
+    // object, so `deny_unknown_fields` never sees extra keys. Round-trip
+    // through serde_json::Value so the strict wire schema is enforced.
+    let json: serde_json::Value = serde_wasm_bindgen::from_value(value)
+        .map_err(|e| JsValue::from_str(&format!("{param}: {e}")))?;
+    serde_json::from_value(json).map_err(|e| JsValue::from_str(&format!("{param}: {e}")))
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +490,7 @@ pub fn steepest_ascent(
 // ---------------------------------------------------------------------------
 
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ResponseSpecInput {
     goal: String,
     lower: f64,
@@ -590,4 +596,22 @@ pub fn two_level_factorial_power(
     alpha: f64,
 ) -> f64 {
     crate::power::two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha)
+}
+
+// ── Wire-schema strictness tests ─────────────────────────────────────
+
+#[cfg(test)]
+mod dto_strictness_tests {
+    use serde_json::json;
+
+    #[test]
+    fn response_spec_rejects_unknown_keys() {
+        match serde_json::from_value::<super::ResponseSpecInput>(json!({
+            "goal": "maximize", "lower": 0.0, "target": 1.0, "upper": 2.0,
+            "s1": 1.0, "s2": 1.0, "weight": 2.0
+        })) {
+            Ok(_) => panic!("unknown key must be rejected"),
+            Err(e) => assert!(e.to_string().contains("unknown field"), "{e}"),
+        }
+    }
 }
