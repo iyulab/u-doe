@@ -24,6 +24,8 @@ jobs:
           git clone --depth 1 https://github.com/iyulab/u-analytics.git ../../algorithms/u-analytics
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo check --all-targets
 
   fmt:
@@ -51,6 +53,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo clippy --all-targets -- -D warnings
 
   test:
@@ -70,6 +74,8 @@ jobs:
           git clone --depth 1 https://github.com/iyulab/u-analytics.git ../../algorithms/u-analytics
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo test --all-targets
 
   docs:
@@ -85,6 +91,8 @@ jobs:
           git clone --depth 1 https://github.com/iyulab/u-analytics.git ../../algorithms/u-analytics
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo doc --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
@@ -104,6 +112,8 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo check --target wasm32-unknown-unknown
 
   audit:
@@ -138,6 +148,8 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo llvm-cov --lcov --output-path lcov.info
       - uses: codecov/codecov-action@v4
         with:
@@ -157,5 +169,7 @@ jobs:
           git clone --depth 1 https://github.com/iyulab/u-analytics.git ../../algorithms/u-analytics
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Check public API against the latest crates.io release
         uses: obi1kenobi/cargo-semver-checks-action@v2
