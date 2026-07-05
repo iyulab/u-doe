@@ -242,6 +242,19 @@ Compute Derringer-Suich desirability for multiple responses.
 
 Compute statistical power of a 2^(k-p) factorial design. Returns power in [0, 1].
 
+## npm (WebAssembly)
+
+```bash
+npm install @iyulab/u-doe
+```
+
+The package resolves per environment via a conditional `exports` map:
+
+| Environment | Entry |
+|---|---|
+| Bundlers (webpack, Vite, …) | ESM + WebAssembly ESM-integration (`default` condition) |
+| Node.js — `require()`, ESM `import`, CJS TS runners (`tsx`, `ts-node`) | CJS glue loading the wasm from the filesystem (`node` condition) — no loader hooks or flags |
+
 ## Related
 
 - [`u-analytics`](https://crates.io/crates/u-analytics) — SPC, process capability, statistical analysis

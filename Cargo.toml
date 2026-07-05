@@ -1,6 +1,6 @@
 [package]
 name = "u-doe"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 authors = ["iyulab"]
 license = "MIT"
@@ -17,7 +17,7 @@ crate-type = ["cdylib", "rlib"]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:serde_json", "dep:serde"]
 
 [dependencies]
-u-numflow = { version = "0.2", path = "../../foundation/u-numflow" }
+u-numflow = { version = "0.3", path = "../../foundation/u-numflow" }
 u-analytics = { version = "0.6", path = "../../algorithms/u-analytics" }
 serde = { version = "1", features = ["derive"], optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
