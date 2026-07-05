@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-07-05
+
+### Fixed
+
+- npm: expose the `./package.json` subpath in the `exports` map so tools
+  that `require('<pkg>/package.json')` (license scanners, version
+  reporters) keep working alongside the conditional exports introduced in
+  the previous release (`ERR_PACKAGE_PATH_NOT_EXPORTED`).
+
 ## [0.6.1] - 2026-07-05
 
 ### Fixed
