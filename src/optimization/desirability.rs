@@ -361,7 +361,10 @@ mod tests {
         let d_heavy = overall_desirability(&make(9.0), &[25.0, 100.0]);
         // Equal weights: sqrt(0.25*1) = 0.5. Heavy on response 1: (0.25^9)^(1/10) ≈ 0.28.
         assert!((d_equal - 0.5).abs() < 1e-9, "equal → 0.5, got {d_equal}");
-        assert!(d_heavy < d_equal, "heavier weight on the worse response must lower D");
+        assert!(
+            d_heavy < d_equal,
+            "heavier weight on the worse response must lower D"
+        );
         assert!((d_heavy - 0.25_f64.powf(0.9)).abs() < 1e-9, "D = {d_heavy}");
     }
 
@@ -372,6 +375,9 @@ mod tests {
             ResponseSpec::maximize(50.0, 100.0, 100.0, 1.0).with_importance(1.0),
         ];
         let d = overall_desirability(&specs, &[80.0, 10.0]); // second → d=0
-        assert!(d.abs() < 1e-12, "any zero d with positive weight → D=0, got {d}");
+        assert!(
+            d.abs() < 1e-12,
+            "any zero d with positive weight → D=0, got {d}"
+        );
     }
 }
