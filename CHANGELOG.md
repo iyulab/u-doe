@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.7.0] - 2026-07-15
+
+### Added
+
+- **`desirability` — response importance weights.** `ResponseSpec` gains an
+  `importance` field (default `1.0`) and a `with_importance()` builder, and
+  `overall_desirability` now computes the canonical Derringer-Suich
+  importance-weighted geometric mean D = (∏ dᵢ^rᵢ)^(1/Σrᵢ). With all weights at
+  the default this is identical to the previous unweighted geometric mean. The
+  WASM `desirability` spec accepts an optional `importance` field. This separates
+  the response weight from the curve-shape exponents `s1`/`s2`, which were
+  previously the only per-response knob and were easy to mistake for importance.
+
+### Changed
+
+- **`half_normal_plot_data` / WASM `estimate_effects` — term identity.**
+  `half_normal_plot_data` now returns `Vec<HalfNormalPoint>` (`term_index`,
+  `abs_effect`, `quantile`) instead of bare `(f64, f64)` tuples, and the WASM
+  `half_normal` output is now `[{ term_index, abs_effect, quantile }]`. The points
+  are sorted by `|effect|`, a different order from `effects` (model-term order);
+  the new `term_index` lets callers label each point correctly instead of pairing
+  positionally, which mislabelled every point.
+
 ## [0.6.2] - 2026-07-05
 
 ### Fixed

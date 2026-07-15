@@ -204,10 +204,13 @@ Estimate main effects and interactions for a 2-level factorial design.
     { "name": "A",   "columns": [0],    "estimate": 21.6,  "sum_of_squares": 1870.6, "percent_contribution": 45.2 },
     { "name": "A:C", "columns": [0, 2], "estimate": -18.1, "sum_of_squares": 1314.1, "percent_contribution": 31.7 }
   ],
-  "half_normal": [[18.1, 0.57], [21.6, 1.15]] }
+  "half_normal": [{ "term_index": 1, "abs_effect": 18.1, "quantile": 0.57 },
+                  { "term_index": 0, "abs_effect": 21.6, "quantile": 1.15 }] }
 ```
 
 Interaction names join factor names with `":"` (since 0.5.0; previously bare concatenation `"AC"`). `columns` holds the design-matrix column indices of the term's factors — use it for display formatting (e.g. `"A × C"`) instead of parsing `name`.
+
+Each `half_normal` point carries `term_index` — an index into `effects` — so a point can be labelled directly (e.g. `effects[point.term_index].name`). The points are sorted by `|effect|`, a **different order** from `effects` (model-term order), so pairing them positionally (`effects[i]` ↔ `half_normal[i]`) mislabels every point; always use `term_index`.
 
 #### `fit_rsm(design, responses, factor_names) -> RsmModel`
 
@@ -231,12 +234,16 @@ Compute the steepest ascent path from a fitted RSM model.
 
 Compute Derringer-Suich desirability for multiple responses.
 
-**Input:** `specs`: `[{ "goal": "Maximize"|"Minimize"|"Target", "lower": 0, "target": 100, "upper": 100, "s1": 1, "s2": 1 }]`, `responses`: `Float64Array`
+**Input:** `specs`: `[{ "goal": "Maximize"|"Minimize"|"Target", "lower": 0, "target": 100, "upper": 100, "s1": 1, "s2": 1, "importance": 1 }]`, `responses`: `Float64Array`
+
+`s1`/`s2` are curve-shape exponents (`s = 1` linear, `> 1` convex/stricter, `< 1` concave). `importance` (optional, default `1`) is the Derringer-Suich response weight rᵢ — it is **distinct from** the shape exponents: raise `importance` to make a response count more in the aggregate, not to reshape its curve.
 
 **Output:**
 ```json
 { "individual": [0.8, 0.6], "overall": 0.69 }
 ```
+
+`overall` is the importance-weighted geometric mean D = (∏ dᵢ^rᵢ)^(1/Σrᵢ); with all weights at the default `1` this is the plain geometric mean.
 
 #### `two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha) -> f64`
 

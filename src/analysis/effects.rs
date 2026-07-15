@@ -125,31 +125,60 @@ pub fn estimate_effects(
     Ok(estimates)
 }
 
-/// Generate (|effect|, half-normal quantile) data for a Half-Normal Plot.
+/// One point on a Half-Normal Plot, tied back to its source term.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HalfNormalPoint {
+    /// Index into the `effects` slice this point was computed from. Because the
+    /// points are sorted by `|effect|` while `effects` stays in model-term order,
+    /// this index is the ONLY reliable way to label a point — positional zipping
+    /// of `effects[i]` with the i-th point is always wrong.
+    pub term_index: usize,
+    /// Absolute effect estimate `|effect|` for the term (the plot's x-axis).
+    pub abs_effect: f64,
+    /// Half-normal plotting-position quantile (the plot's y-axis).
+    pub quantile: f64,
+}
+
+/// Generate Half-Normal Plot points for a set of estimated effects.
 ///
-/// Sorts effects by absolute value and assigns half-normal quantiles using
-/// the formula: `Φ⁻¹((i + 0.5) / m)` for the i-th sorted absolute effect.
+/// Points are sorted by `|effect|` ascending and assigned half-normal quantiles
+/// `Φ⁻¹((1 + (i + 0.5)/m) / 2)` for the i-th sorted point. Each point carries a
+/// [`term_index`](HalfNormalPoint::term_index) back into `effects` so callers can
+/// label points without re-sorting — the sort order here differs from the
+/// model-term order of `effects`, so positional pairing (`effects[i]` ↔ point i)
+/// mislabels every point.
 ///
 /// Reference: Daniel (1959), Technometrics 1(4).
-pub fn half_normal_plot_data(effects: &[EffectEstimate]) -> Vec<(f64, f64)> {
+pub fn half_normal_plot_data(effects: &[EffectEstimate]) -> Vec<HalfNormalPoint> {
     let m = effects.len();
     if m == 0 {
         return Vec::new();
     }
 
-    let mut abs_effects: Vec<f64> = effects.iter().map(|e| e.estimate.abs()).collect();
-    abs_effects.sort_by(|a, b| a.partial_cmp(b).expect("effect estimate must be finite"));
+    // Sort term *indices* by |effect| ascending, preserving each point's identity.
+    let mut order: Vec<usize> = (0..m).collect();
+    order.sort_by(|&a, &b| {
+        effects[a]
+            .estimate
+            .abs()
+            .partial_cmp(&effects[b].estimate.abs())
+            .expect("effect estimate must be finite")
+    });
 
-    abs_effects
+    order
         .iter()
         .enumerate()
-        .map(|(i, &abs_e)| {
+        .map(|(i, &term_index)| {
             // Half-normal plotting position: Φ⁻¹((1 + p_i) / 2) where p_i = (i + 0.5) / m.
             // This maps the uniform plotting position to the upper half of the standard
             // normal, giving a non-negative quantile for the half-normal distribution.
             let p = (i as f64 + 0.5) / m as f64;
             let quantile = normal_quantile((1.0 + p) / 2.0);
-            (abs_e, quantile)
+            HalfNormalPoint {
+                term_index,
+                abs_effect: effects[term_index].estimate.abs(),
+                quantile,
+            }
         })
         .collect()
 }
@@ -376,11 +405,57 @@ mod tests {
         let data = half_normal_plot_data(&effects);
         assert_eq!(data.len(), 3);
         // Sorted by |effect| ascending
-        assert!(data[0].0 <= data[1].0);
-        assert!(data[1].0 <= data[2].0);
+        assert!(data[0].abs_effect <= data[1].abs_effect);
+        assert!(data[1].abs_effect <= data[2].abs_effect);
         // Quantiles are positive (half-normal)
-        for (_, q) in &data {
-            assert!(*q >= 0.0, "quantile should be non-negative");
+        for point in &data {
+            assert!(point.quantile >= 0.0, "quantile should be non-negative");
+        }
+    }
+
+    /// Regression (upstream-012): each point must carry a `term_index` that ties
+    /// it back to its source effect, so the top point (largest |effect|) resolves
+    /// to the correct term name — not to `effects[last]` by naive positional zip.
+    #[test]
+    fn half_normal_points_carry_correct_term_index() {
+        // effects in model order; the largest |effect| is term 0 ("A", |−5|).
+        let effects = vec![
+            EffectEstimate {
+                name: "A".into(),
+                columns: vec![0],
+                estimate: -5.0,
+                sum_of_squares: 25.0,
+                percent_contribution: 50.0,
+            },
+            EffectEstimate {
+                name: "B".into(),
+                columns: vec![1],
+                estimate: 2.0,
+                sum_of_squares: 4.0,
+                percent_contribution: 8.0,
+            },
+            EffectEstimate {
+                name: "A:B".into(),
+                columns: vec![0, 1],
+                estimate: -1.0,
+                sum_of_squares: 1.0,
+                percent_contribution: 2.0,
+            },
+        ];
+        let data = half_normal_plot_data(&effects);
+
+        // The last (top) point has the largest |effect| and MUST index term "A".
+        let top = data.last().expect("non-empty");
+        assert_eq!(top.term_index, 0, "top point must map to term A (index 0)");
+        assert_eq!(effects[top.term_index].name, "A");
+
+        // Every point's abs_effect must match its indexed term — no mislabeling,
+        // regardless of the sort permutation.
+        for point in &data {
+            assert!(
+                (point.abs_effect - effects[point.term_index].estimate.abs()).abs() < 1e-12,
+                "point abs_effect must equal |effect| of its indexed term"
+            );
         }
     }
 }

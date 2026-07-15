@@ -342,9 +342,16 @@ struct EffectEstimateDto {
 }
 
 #[derive(Serialize)]
+struct HalfNormalPointDto {
+    term_index: usize,
+    abs_effect: f64,
+    quantile: f64,
+}
+
+#[derive(Serialize)]
 struct EstimateEffectsResultDto {
     effects: Vec<EffectEstimateDto>,
-    half_normal: Vec<(f64, f64)>,
+    half_normal: Vec<HalfNormalPointDto>,
 }
 
 /// Estimate main effects and interactions for a 2-level factorial design,
@@ -356,7 +363,10 @@ struct EstimateEffectsResultDto {
 /// `max_order`: maximum interaction order (1 = main effects only, 2 = + 2FI, 3 = + 3FI).
 ///
 /// Returns `{ effects: [{ name, columns, estimate, sum_of_squares, percent_contribution }],
-///            half_normal: [[abs_effect, quantile]] }`.
+///            half_normal: [{ term_index, abs_effect, quantile }] }`.
+/// Each `half_normal` point carries `term_index` (an index into `effects`) so the
+/// point can be labelled directly — the points are sorted by `|effect|`, a
+/// different order from `effects`, so positional pairing would mislabel them.
 ///
 /// # Errors
 /// Returns an error string if dimensions do not match or an argument has the
@@ -375,7 +385,14 @@ pub fn estimate_effects(
     let effects = crate::analysis::effects::estimate_effects(&design, responses, max_order)
         .map_err(js_err)?;
 
-    let half_normal = crate::analysis::effects::half_normal_plot_data(&effects);
+    let half_normal = crate::analysis::effects::half_normal_plot_data(&effects)
+        .into_iter()
+        .map(|p| HalfNormalPointDto {
+            term_index: p.term_index,
+            abs_effect: p.abs_effect,
+            quantile: p.quantile,
+        })
+        .collect();
 
     let dto = EstimateEffectsResultDto {
         effects: effects
@@ -489,6 +506,10 @@ pub fn steepest_ascent(
 // P2: Desirability
 // ---------------------------------------------------------------------------
 
+fn default_importance() -> f64 {
+    1.0
+}
+
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ResponseSpecInput {
@@ -498,6 +519,9 @@ struct ResponseSpecInput {
     upper: f64,
     s1: f64,
     s2: f64,
+    /// Relative importance weight rᵢ (Derringer-Suich). Optional; defaults to 1.0.
+    #[serde(default = "default_importance")]
+    importance: f64,
 }
 
 #[derive(Serialize)]
@@ -509,10 +533,13 @@ struct DesirabilityResultDto {
 /// Compute Derringer-Suich desirability for multiple responses.
 ///
 /// `specs`: native array of response specification objects, each:
-///   `{ goal: "Maximize"|"Minimize"|"Target", lower, target, upper, s1, s2 }`
+///   `{ goal: "Maximize"|"Minimize"|"Target", lower, target, upper, s1, s2, importance? }`
+///   where `s1`/`s2` are curve-shape exponents and the optional `importance`
+///   (default 1.0) is the Derringer-Suich weight rᵢ for the overall aggregation.
 /// `responses`: flat array of observed response values (one per spec).
 ///
-/// Returns `{ individual: [f64], overall: f64 }`.
+/// Returns `{ individual: [f64], overall: f64 }` where `overall` is the
+/// importance-weighted geometric mean (∏ dᵢ^rᵢ)^(1/Σrᵢ).
 ///
 /// # Errors
 /// Returns an error string if `specs` has the wrong shape (native JS values,
@@ -551,6 +578,7 @@ pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValu
                 upper: input.upper,
                 s1: input.s1,
                 s2: input.s2,
+                importance: input.importance,
             })
         })
         .collect::<Result<Vec<_>, JsValue>>()?;
