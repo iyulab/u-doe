@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-17
+
+### Changed
+
+- **BREAKING: `fractional_factorial(7, 3)` now emits the published standard
+  fraction.** The 2^(7-3) generators change from the non-standard
+  `E=ABD, F=ACD, G=BCD` to the textbook `E=ABC, F=BCD, G=ACD`
+  (Montgomery 2019, Table 8.14; NIST/SEMATECH e-Handbook §5.3.3.4.7),
+  matching every other supported (k, p). Both fractions are valid
+  resolution IV designs, but the previous one silently diverged from the
+  published alias tables consumers pair these designs with. Runs stored
+  from an earlier 7-3 design do not match the new matrix.
+
+### Fixed
+
+- **`fractional_factorial_info(7, 3)` returned a mathematically invalid
+  defining relation.** The stored string
+  `I=ABDE=ACDF=AEFG=BCFG=BDEG=CDEF=ABCG` was not closed under word
+  products (e.g. ABDE·ACDF = BCEF, absent), so it described *no*
+  2^(7-3) fraction — neither the emitted one nor the standard one. The
+  relation is now `I=ABCE=BCDF=ACDG=ADEF=BDEG=ABFG=CEFG`, and new
+  table-wide invariant tests pin every entry's defining relation to the
+  emitted design matrix (each word's column product is +1 on every run,
+  2^p−1 distinct words, resolution = shortest word length), so a
+  generators ↔ relation mismatch can no longer pass CI.
+
+### Added
+
+- **`FractionalInfo.generators`** — generator equations of the emitted
+  fraction (e.g. `["E=ABC", "F=BCD", "G=ACD"]`), derived from the same
+  numeric table that builds the design matrix so the strings cannot
+  drift. Consumers can now derive the alias structure of the design they
+  actually received instead of pairing it with an external published
+  table.
+- **WASM `fractional_factorial_info(k, p)`** — exposes the metadata to
+  npm consumers: `{ k, p, resolution: "III"|"IV"|"V", defining_relation,
+  generators: [str] }`.
+- **`fractional_factorial(6, 3)`** — the standard 8-run resolution III
+  fraction (`D=AB, E=AC, F=BC`, Montgomery Table 8.14) was missing from
+  the generator table and rejected as unsupported.
+- `Resolution` now implements `Display` (`"III"` / `"IV"` / `"V"`).
+
 ## [0.7.0] - 2026-07-15
 
 ### Added

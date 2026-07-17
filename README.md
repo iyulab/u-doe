@@ -106,7 +106,7 @@ println!("Required replicates: {n}");
 | Design | Function | Use Case |
 |--------|----------|----------|
 | Full Factorial | `full_factorial(k)` | k = 2..7, all factor combinations |
-| Fractional Factorial | `fractional_factorial(k, p)` | Screening, k=3..7, p=1..3 |
+| Fractional Factorial | `fractional_factorial(k, p)` | Screening, k=4..7, p=1..3 |
 | Plackett-Burman | `plackett_burman(k)` | Screening, k ≤ 19, N = 8/12/16/20 |
 | CCD | `ccd(k, alpha, n_center)` | RSM, k = 2..6 |
 | Box-Behnken | `box_behnken(k, n_center)` | RSM, k = 3/4/5 |
@@ -156,6 +156,21 @@ Generate a 2^k full factorial design (k = 1..7).
 #### `fractional_factorial(k, p) -> DesignMatrix`
 
 Generate a 2^(k-p) fractional factorial design (k = 4..7, p = 1..3).
+
+#### `fractional_factorial_info(k, p) -> FractionalInfo`
+
+Metadata for the fraction `fractional_factorial(k, p)` emits: resolution, defining relation, and generator equations. Use it to derive the alias structure of the design you actually received instead of pairing the matrix with an external published table.
+
+**Output:**
+```json
+{
+  "k": 7,
+  "p": 3,
+  "resolution": "IV",
+  "defining_relation": "I=ABCE=BCDF=ACDG=ADEF=BDEG=ABFG=CEFG",
+  "generators": ["E=ABC", "F=BCD", "G=ACD"]
+}
+```
 
 #### `plackett_burman(k) -> DesignMatrix`
 

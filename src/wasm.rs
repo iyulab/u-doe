@@ -73,6 +73,27 @@ impl From<crate::design::DesignMatrix> for DesignMatrixDto {
 }
 
 #[derive(Serialize)]
+struct FractionalInfoDto {
+    k: usize,
+    p: usize,
+    resolution: String,
+    defining_relation: String,
+    generators: Vec<String>,
+}
+
+impl From<crate::design::factorial::FractionalInfo> for FractionalInfoDto {
+    fn from(info: crate::design::factorial::FractionalInfo) -> Self {
+        FractionalInfoDto {
+            k: info.k,
+            p: info.p,
+            resolution: info.resolution.to_string(),
+            defining_relation: info.defining_relation,
+            generators: info.generators,
+        }
+    }
+}
+
+#[derive(Serialize)]
 struct EffectRowDto {
     name: String,
     sum_of_squares: f64,
@@ -283,6 +304,25 @@ pub fn signal_to_noise(responses: JsValue, goal: &str) -> Result<JsValue, JsValu
 pub fn fractional_factorial(k: usize, p: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::factorial::fractional_factorial(k, p).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
+}
+
+/// Metadata for a 2^(k-p) fractional factorial design: resolution, defining
+/// relation, and generator equations of the fraction `fractional_factorial(k, p)`
+/// actually emits — lets consumers derive the alias structure without pairing
+/// the design with an external published table.
+///
+/// Returns `{ k: usize, p: usize, resolution: "III"|"IV"|"V",
+/// defining_relation: str, generators: [str] }` —
+/// e.g. `{ k: 7, p: 3, resolution: "IV",
+/// defining_relation: "I=ABCE=BCDF=ACDG=ADEF=BDEG=ABFG=CEFG",
+/// generators: ["E=ABC", "F=BCD", "G=ACD"] }`.
+///
+/// # Errors
+/// Returns an error string if the (k, p) combination is not in the standard table.
+#[wasm_bindgen]
+pub fn fractional_factorial_info(k: usize, p: usize) -> Result<JsValue, JsValue> {
+    let info = crate::design::factorial::fractional_factorial_info(k, p).map_err(js_err)?;
+    to_js(&FractionalInfoDto::from(info))
 }
 
 /// Generate a Plackett-Burman screening design for `k` factors (1 ≤ k ≤ 19).
@@ -641,5 +681,22 @@ mod dto_strictness_tests {
             Ok(_) => panic!("unknown key must be rejected"),
             Err(e) => assert!(e.to_string().contains("unknown field"), "{e}"),
         }
+    }
+
+    #[test]
+    fn fractional_info_dto_wire_shape() {
+        // Pin the JSON wire shape documented in the npm README.
+        let info = crate::design::factorial::fractional_factorial_info(7, 3).expect("supported");
+        let dto = super::FractionalInfoDto::from(info);
+        assert_eq!(
+            serde_json::to_value(&dto).expect("serializable"),
+            json!({
+                "k": 7,
+                "p": 3,
+                "resolution": "IV",
+                "defining_relation": "I=ABCE=BCDF=ACDG=ADEF=BDEG=ABFG=CEFG",
+                "generators": ["E=ABC", "F=BCD", "G=ACD"]
+            })
+        );
     }
 }
