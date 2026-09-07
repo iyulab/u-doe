@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-07
+
+### Changed
+
+- **`rand` is now 0.10** and **`getrandom` 0.4** on WebAssembly targets. This
+  crate does not name `rand` types in its public signatures, so the change is
+  internal and the API is unaffected. The
+  `RUSTFLAGS --cfg getrandom_backend="wasm_js"` that `getrandom` 0.3 required is
+  no longer needed.
+- **`u-numflow` is now required at 0.4 and `u-analytics` at 0.7** (previously 0.3
+  and 0.6), following those crates' own releases.
+- **The minimum supported Rust version is now declared as 1.85** and is verified
+  by building on that exact toolchain; 1.84 and below fail. The crate previously
+  declared no `rust-version` at all.
+
 ## [0.8.0] - 2026-07-17
 
 ### Changed
