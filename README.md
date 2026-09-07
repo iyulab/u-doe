@@ -112,6 +112,8 @@ println!("Required replicates: {n}");
 | Box-Behnken | `box_behnken(k, n_center)` | RSM, k = 3/4/5 |
 | Taguchi | `taguchi_array(name, k)` | Robust design, L4–L27 |
 | DSD | `definitive_screening(k)` | Screening + quadratic, k = 2..12, 2k+1 runs |
+| Simplex Lattice | `simplex_lattice(q, m)` | Mixture, q = 2..12, degree m = 1..10 |
+| Simplex Centroid | `simplex_centroid(q)` | Mixture, q = 2..12, 2^q − 1 subset centroids |
 
 ## References
 
@@ -191,6 +193,27 @@ Get a Taguchi orthogonal array. `name`: `"L4"` | `"L8"` | `"L9"` | `"L12"` | `"L
 #### `definitive_screening(k) -> DesignMatrix`
 
 Generate a Definitive Screening Design (k = 2..12).
+
+
+#### `simplex_lattice(q, m) -> DesignMatrix`
+
+Simplex lattice design for a `q`-component mixture, degree `m`. Rows are the
+compositions whose components are multiples of `1/m` and sum to 1.
+
+`q` must be in `2..=12` and `m` in `1..=10`; anything else is rejected with an
+error rather than returning a degenerate design.
+
+```js
+simplex_lattice(3, 2)
+// { data: [[0,0,1],[0,0.5,0.5],[0,1,0],[0.5,0,0.5],[0.5,0.5,0],[1,0,0]],
+//   factor_names: ["X1","X2","X3"], run_count: 6, factor_count: 3 }
+```
+
+#### `simplex_centroid(q) -> DesignMatrix`
+
+Simplex centroid design: the centroid of every non-empty subset of the `q`
+components, giving `2^q − 1` runs (q=3 → 7, q=4 → 15). `q` must be in `2..=12` —
+the run count doubles with every additional component.
 
 #### `doe_anova(design, responses, factor_names, effect_names) -> AnovaResult`
 

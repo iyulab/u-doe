@@ -350,7 +350,7 @@ pub fn plackett_burman(k: usize) -> Result<JsValue, JsValue> {
 /// Factor names are "X1", "X2", ..., "Xq".
 #[wasm_bindgen]
 pub fn simplex_lattice(q: usize, m: usize) -> Result<JsValue, JsValue> {
-    let design = crate::design::mixture::simplex_lattice(q, m);
+    let design = crate::design::mixture::simplex_lattice(q, m).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
 
@@ -364,7 +364,7 @@ pub fn simplex_lattice(q: usize, m: usize) -> Result<JsValue, JsValue> {
 /// Factor names are "X1", "X2", ..., "Xq".
 #[wasm_bindgen]
 pub fn simplex_centroid(q: usize) -> Result<JsValue, JsValue> {
-    let design = crate::design::mixture::simplex_centroid(q);
+    let design = crate::design::mixture::simplex_centroid(q).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
 

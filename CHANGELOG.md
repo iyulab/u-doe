@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0]
+
+### Changed
+
+- **Breaking:** `design::mixture::simplex_lattice` and `simplex_centroid` now
+  return `Result<DesignMatrix, DoeError>` instead of `DesignMatrix`, matching
+  every other design generator in the crate. Their doc comments already stated
+  the contract (`q >= 2`, `m >= 1`); nothing enforced it.
+  - `simplex_lattice(0, 2)` used to abort — reaching WebAssembly callers as a
+    raw `unreachable` trap rather than a domain error.
+  - `simplex_lattice(q, 0)` used to divide by zero and return a design matrix of
+    `NaN`, which serialises to `null` and reached the caller looking
+    structurally valid. This was the more dangerous of the two.
+  - `simplex_centroid(q)` computes `2^q - 1` runs by shifting, which overflowed
+    for large `q`.
+- Component count is now bounded to `2..=12` and lattice degree to `1..=10`,
+  reported through the existing `InvalidFactorCount` and `UnsupportedDesign`
+  errors.
+
+### Added
+
+- Documentation for both mixture designs in the README, including the
+  WebAssembly signatures and returned JSON shape.
+- Boundary regression tests, plus an invariant that accepted designs never
+  contain non-finite values.
+
 ## [Unreleased]
 
 ## [0.8.1] - 2026-09-07
