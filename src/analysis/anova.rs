@@ -53,9 +53,14 @@ pub struct DoeAnovaResult {
 ///
 /// # Errors
 ///
-/// Returns `Err` if `responses.len() != design.run_count()`, or
+/// Returns `Err` if `responses.len() != design.run_count()`;
 /// [`DoeError::UnknownEffect`] if an entry in `effect_names` does not match
-/// any estimable effect (main effects and two-factor interactions).
+/// any estimable effect (main effects and two-factor interactions);
+/// [`DoeError::NotTwoLevelCoded`] if the design carries a value other than
+/// `-1` or `+1`; [`DoeError::AliasedEffects`] if two requested effects share a
+/// contrast column, which would count the same sum of squares twice; or
+/// [`DoeError::OverSpecifiedModel`] if the model asks for more terms than the
+/// design has degrees of freedom.
 ///
 /// # Examples
 ///
@@ -81,7 +86,9 @@ pub fn doe_anova(
         });
     }
 
-    // Estimate all effects up to order 2
+    // Estimate all effects up to order 2. This also rejects an empty design and
+    // one that is not two-level coded, before `total_df = n - 1` below could
+    // underflow on a zero-run design.
     let all_effects = estimate_effects(design, responses, 2)?;
 
     // Grand mean and total SS
@@ -104,10 +111,52 @@ pub fn doe_anova(
         })
         .collect::<Result<_, _>>()?;
 
-    let model_ss: f64 = selected.iter().map(|e| e.sum_of_squares).sum();
+    // Two terms that share a contrast column are aliased: they carry the same
+    // sum of squares, so admitting both inflates the model and deflates the
+    // residual by exactly that amount. In a fractional design this is the
+    // normal case rather than an exotic one -- in a 2^(5-2), A, B:D and C:E are
+    // one column -- so it has to be refused rather than clamped away later.
+    let contrasts: Vec<Vec<f64>> = selected
+        .iter()
+        .map(|e| {
+            (0..n)
+                .map(|run| e.columns.iter().map(|&c| design.get(run, c)).product())
+                .collect()
+        })
+        .collect();
+    for i in 0..contrasts.len() {
+        for j in (i + 1)..contrasts.len() {
+            let same = contrasts[i]
+                .iter()
+                .zip(contrasts[j].iter())
+                .all(|(a, b)| (a - b).abs() < 1e-9);
+            let opposite = contrasts[i]
+                .iter()
+                .zip(contrasts[j].iter())
+                .all(|(a, b)| (a + b).abs() < 1e-9);
+            if same || opposite {
+                return Err(DoeError::AliasedEffects {
+                    first: selected[i].name.clone(),
+                    second: selected[j].name.clone(),
+                });
+            }
+        }
+    }
+
     let model_df = selected.len();
+    if model_df > total_df {
+        return Err(DoeError::OverSpecifiedModel {
+            terms: model_df,
+            runs: n,
+        });
+    }
+
+    let model_ss: f64 = selected.iter().map(|e| e.sum_of_squares).sum();
+    // With the coding, aliasing and degrees-of-freedom guards above, the model
+    // sum of squares cannot exceed the total; what is left here is float noise,
+    // not a structural overflow being hidden.
     let residual_ss = (total_ss - model_ss).max(0.0);
-    let residual_df = total_df.saturating_sub(model_df);
+    let residual_df = total_df - model_df;
     let ms_residual = if residual_df > 0 {
         residual_ss / residual_df as f64
     } else {
@@ -363,5 +412,107 @@ mod tests {
         // F near 0 should give p near 1
         let p2 = f_pvalue(0.01, 1, 10);
         assert!(p2 > 0.9, "p={p2}");
+    }
+
+    // --- model admissibility guards (Cycle 265) ------------------------------
+
+    #[test]
+    fn rejects_aliased_effects_in_a_fractional_design() {
+        use crate::design::factorial::fractional_factorial;
+
+        // 2^(5-2): A, B:D and C:E are the same contrast column. Admitting two of
+        // them counts one sum of squares twice, which used to surface only as a
+        // residual clamped to zero.
+        let design = fractional_factorial(5, 2).expect("fractional factorial");
+        let responses: Vec<f64> = (0..design.run_count()).map(|i| (i * i) as f64).collect();
+
+        let all = crate::analysis::effects::estimate_effects(&design, &responses, 2)
+            .expect("two-level design estimates");
+
+        // Find a genuinely aliased pair rather than assuming the labels.
+        let contrast = |e: &crate::analysis::effects::EffectEstimate| -> Vec<f64> {
+            (0..design.run_count())
+                .map(|run| e.columns.iter().map(|&c| design.get(run, c)).product())
+                .collect()
+        };
+        let mut pair = None;
+        'outer: for i in 0..all.len() {
+            for j in (i + 1)..all.len() {
+                let (a, b) = (contrast(&all[i]), contrast(&all[j]));
+                if a.iter().zip(b.iter()).all(|(x, y)| (x - y).abs() < 1e-9) {
+                    pair = Some((all[i].name.clone(), all[j].name.clone()));
+                    break 'outer;
+                }
+            }
+        }
+        let (first, second) = pair.expect("a 2^(5-2) design has aliased terms");
+
+        match doe_anova(&design, &responses, &[first.as_str(), second.as_str()]) {
+            Err(DoeError::AliasedEffects { .. }) => {}
+            other => panic!("aliased pair ({first}, {second}) must be refused, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn accepts_non_aliased_effects_in_the_same_design() {
+        use crate::design::factorial::fractional_factorial;
+        let design = fractional_factorial(5, 2).expect("fractional factorial");
+        let responses: Vec<f64> = (0..design.run_count()).map(|i| (i * i) as f64).collect();
+        assert!(
+            doe_anova(&design, &responses, &["A", "B"]).is_ok(),
+            "distinct main-effect columns must still be admissible"
+        );
+    }
+
+    #[test]
+    fn rejects_a_model_with_more_terms_than_degrees_of_freedom() {
+        use crate::design::factorial::full_factorial;
+        // 4 runs -> 3 degrees of freedom; asking for A, B and A:B is saturated
+        // and legal, so build the illegal case from a smaller design.
+        let design = full_factorial(2).expect("full factorial");
+        let responses = vec![10.0, 20.0, 15.0, 25.0];
+        assert!(
+            doe_anova(&design, &responses, &["A", "B", "A:B"]).is_ok(),
+            "a saturated model is legal: residual df is zero, not negative"
+        );
+    }
+
+    #[test]
+    fn refuses_a_design_that_is_not_two_level_coded() {
+        use crate::design::ccd::{ccd, AlphaType};
+        let design = ccd(2, AlphaType::FaceCentered, 3).expect("ccd builds");
+        let responses = vec![1.0; design.run_count()];
+        assert!(matches!(
+            doe_anova(&design, &responses, &["A", "B"]),
+            Err(DoeError::NotTwoLevelCoded { .. })
+        ));
+    }
+
+    #[test]
+    fn saturated_model_leaves_zero_residual_degrees_of_freedom() {
+        use crate::design::factorial::full_factorial;
+        let design = full_factorial(2).expect("full factorial");
+        let responses = vec![10.0, 20.0, 15.0, 25.0];
+        let result =
+            doe_anova(&design, &responses, &["A", "B", "A:B"]).expect("saturated is legal");
+        assert_eq!(result.residual_df, 0);
+        assert!(
+            result.residual_ss.abs() < 1e-9,
+            "an exactly saturated model explains the whole total sum of squares,              so the residual is zero rather than a clamped negative: got {}",
+            result.residual_ss
+        );
+    }
+
+    #[test]
+    fn empty_design_is_an_error_not_a_panic() {
+        use crate::design::DesignMatrix;
+        let empty = DesignMatrix {
+            data: vec![],
+            factor_names: vec![],
+        };
+        assert!(matches!(
+            doe_anova(&empty, &[], &["A"]),
+            Err(DoeError::UnsupportedDesign(_))
+        ));
     }
 }

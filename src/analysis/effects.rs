@@ -53,7 +53,12 @@ pub struct EffectEstimate {
 ///
 /// # Errors
 ///
-/// Returns `Err` if `responses.len() != design.run_count()`.
+/// Returns `Err` if `responses.len() != design.run_count()`, or
+/// [`DoeError::NotTwoLevelCoded`] if the design carries any value other than
+/// `-1` or `+1`. The contrast for a term is the product of its factor columns,
+/// which estimates an effect only when those columns are two-level coded — a
+/// design with centre points or axial points (central composite, Box-Behnken,
+/// definitive screening) belongs in [`crate::analysis::rsm::fit_rsm`].
 ///
 /// # Examples
 ///
@@ -79,6 +84,25 @@ pub fn estimate_effects(
             expected: n,
             got: responses.len(),
         });
+    }
+
+    // A design with no runs or no factors has nothing to estimate. It is
+    // reachable: `DesignMatrix` has public fields and the WebAssembly entry
+    // points build one straight from caller JSON, so `[]` arrives here.
+    if n == 0 || k == 0 {
+        return Err(DoeError::UnsupportedDesign(format!(
+            "design has {n} runs and {k} factors; both must be non-zero"
+        )));
+    }
+
+    // The contrast for a term is the product of its factor columns. That
+    // product estimates an effect only when every column is ±1: a centre point
+    // zeroes the contrast for every term it touches, and an axial point scales
+    // it by alpha, so the (2/n) divisor no longer matches the runs that
+    // actually contributed. Refusing the input is the only honest answer --
+    // the alternative is a number that looks like an effect and is not one.
+    if let Some((run, factor, value)) = design.two_level_violation() {
+        return Err(DoeError::NotTwoLevelCoded { run, factor, value });
     }
 
     // Collect terms to estimate
@@ -457,5 +481,111 @@ mod tests {
                 "point abs_effect must equal |effect| of its indexed term"
             );
         }
+    }
+
+    // --- design coding guard (Cycle 265) -------------------------------------
+    //
+    // The contrast for a term is the product of its factor columns, so effect
+    // estimation is defined only on a two-level design. Before this guard a
+    // centre point silently zeroed contrasts and an axial point scaled them,
+    // and the function returned numbers that looked like effects.
+
+    #[test]
+    fn rejects_central_composite_design() {
+        use crate::design::ccd::{ccd, AlphaType};
+        let design = ccd(2, AlphaType::FaceCentered, 3).expect("ccd builds");
+        let responses = vec![1.0; design.run_count()];
+
+        match estimate_effects(&design, &responses, 2) {
+            Err(DoeError::NotTwoLevelCoded { value, .. }) => {
+                assert!(
+                    (value.abs() - 1.0).abs() > 1e-9,
+                    "reported value must be the offending one, got {value}"
+                );
+            }
+            other => panic!("central composite must be refused, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_box_behnken_design() {
+        use crate::design::box_behnken::box_behnken;
+        let design = box_behnken(3, 1).expect("box-behnken builds");
+        let responses = vec![1.0; design.run_count()];
+        assert!(matches!(
+            estimate_effects(&design, &responses, 2),
+            Err(DoeError::NotTwoLevelCoded { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_three_level_taguchi_array() {
+        use crate::design::taguchi::taguchi_array;
+        let design = taguchi_array("L9", 4).expect("L9 builds");
+        let responses = vec![1.0; design.run_count()];
+        assert!(
+            matches!(
+                estimate_effects(&design, &responses, 1),
+                Err(DoeError::NotTwoLevelCoded { .. })
+            ),
+            "L9 is a three-level array: its middle level codes to 0"
+        );
+    }
+
+    #[test]
+    fn accepts_two_level_taguchi_array() {
+        use crate::design::taguchi::taguchi_array;
+        let design = taguchi_array("L8", 7).expect("L8 builds");
+        let responses: Vec<f64> = (0..design.run_count()).map(|i| i as f64).collect();
+        assert!(
+            estimate_effects(&design, &responses, 1).is_ok(),
+            "L8 is two-level coded and must still be estimable"
+        );
+    }
+
+    #[test]
+    fn accepts_full_and_fractional_factorials() {
+        use crate::design::factorial::{fractional_factorial, full_factorial};
+        use crate::design::plackett_burman::plackett_burman;
+
+        for design in [
+            full_factorial(3).expect("full factorial"),
+            fractional_factorial(5, 2).expect("fractional factorial"),
+            plackett_burman(7).expect("plackett-burman"),
+        ] {
+            assert!(
+                design.two_level_violation().is_none(),
+                "screening designs are two-level coded"
+            );
+            let responses: Vec<f64> = (0..design.run_count()).map(|i| i as f64).collect();
+            assert!(estimate_effects(&design, &responses, 2).is_ok());
+        }
+    }
+
+    #[test]
+    fn rejects_an_empty_design() {
+        use crate::design::DesignMatrix;
+
+        // Reachable from WebAssembly: `DesignMatrix` has public fields and the
+        // binding builds one straight from caller JSON. Before this guard the
+        // ANOVA path computed `total_df = n - 1` on zero runs and panicked,
+        // which reaches a JavaScript caller as an unrecoverable trap.
+        let empty = DesignMatrix {
+            data: vec![],
+            factor_names: vec![],
+        };
+        assert!(matches!(
+            estimate_effects(&empty, &[], 2),
+            Err(DoeError::UnsupportedDesign(_))
+        ));
+
+        let no_factors = DesignMatrix {
+            data: vec![vec![], vec![]],
+            factor_names: vec![],
+        };
+        assert!(matches!(
+            estimate_effects(&no_factors, &[1.0, 2.0], 2),
+            Err(DoeError::UnsupportedDesign(_))
+        ));
     }
 }

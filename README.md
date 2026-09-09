@@ -223,6 +223,12 @@ Perform DOE ANOVA on a coded design matrix.
 
 Interaction effect names join factor names with `":"` (e.g. `"A:B"`). An unknown entry in `effect_names` is an error (since 0.5.0; previously silently skipped).
 
+Since 0.10.0 three further inputs are errors rather than misleading numbers:
+
+- the design is not two-level coded (any value other than `-1`/`+1`) — use `fit_rsm` for designs with centre or axial points;
+- two requested effects share a contrast column, so they are aliased and would contribute the same sum of squares twice;
+- the model asks for more terms than the design has degrees of freedom. An exactly saturated model stays legal, with `residual_df: 0`.
+
 **Output:**
 ```json
 { "effects": [{ "name": "A", "sum_of_squares": 10.0, "df": 1, "mean_square": 10.0, "f_statistic": 5.0, "p_value": 0.03 }], "residual_ss": 4.0, "residual_df": 2, "total_ss": 14.0, "r_squared": 0.71, "r_squared_adj": 0.57 }
@@ -247,6 +253,8 @@ Estimate main effects and interactions for a 2-level factorial design.
 ```
 
 Interaction names join factor names with `":"` (since 0.5.0; previously bare concatenation `"AC"`). `columns` holds the design-matrix column indices of the term's factors — use it for display formatting (e.g. `"A × C"`) instead of parsing `name`.
+
+Since 0.10.0 a design that is not two-level coded is an error. The contrast for a term is the product of its factor columns, which estimates an effect only when every column is `-1` or `+1`: a centre point zeroes that product and an axial point scales it. Central composite, Box-Behnken, definitive screening and three-level Taguchi arrays (L9/L18/L27) therefore belong in `fit_rsm`; two-level arrays (L4/L8/L12/L16), full and fractional factorials and Plackett-Burman designs are unaffected.
 
 Each `half_normal` point carries `term_index` — an index into `effects` — so a point can be labelled directly (e.g. `effects[point.term_index].name`). The points are sorted by `|effect|`, a **different order** from `effects` (model-term order), so pairing them positionally (`effects[i]` ↔ `half_normal[i]`) mislabels every point; always use `term_index`.
 

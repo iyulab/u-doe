@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0]
+
+### Changed
+
+- **Breaking:** `analysis::effects::estimate_effects` and `analysis::anova::doe_anova`
+  now reject a design that is not two-level coded, with the new
+  `DoeError::NotTwoLevelCoded`. Both build the contrast for a term as the product
+  of its factor columns, which estimates an effect only when every column is
+  `-1` or `+1`. A centre point zeroes that product for every term it touches and
+  an axial point scales it, so the `2/n` divisor stops matching the runs that
+  contributed — the functions returned numbers that looked like effects and were
+  not. Designs carrying centre or axial points (central composite, Box-Behnken,
+  definitive screening, three-level Taguchi arrays such as L9/L18/L27) belong in
+  `analysis::rsm::fit_rsm`; two-level arrays (L4/L8/L12/L16), full and fractional
+  factorials and Plackett-Burman designs are unaffected.
+- **Breaking:** `doe_anova` rejects two requested effects that share a contrast
+  column, with the new `DoeError::AliasedEffects`. In a fractional design this is
+  the ordinary case rather than an exotic one — in a 2^(5-2), `A`, `B:D` and
+  `C:E` are one column — and admitting both counted the same sum of squares
+  twice, which previously surfaced only as a residual silently clamped to zero.
+- **Breaking:** `doe_anova` rejects a model with more terms than the design has
+  degrees of freedom, with the new `DoeError::OverSpecifiedModel`. An exactly
+  saturated model stays legal: its residual degrees of freedom are zero, which is
+  the normal outcome for a screening design.
+- `doe_anova` computes residual degrees of freedom by subtraction rather than
+  saturating subtraction. With the three guards above in place the value can no
+  longer go negative, so saturating the result would only hide a bug.
+
+### Added
+
+- `design::DesignMatrix::two_level_violation` reports the first entry that is
+  neither `-1` nor `+1`, as `(run, factor, value)`, so a caller can test a design
+  before handing it to effect estimation.
+
 ## [0.9.0]
 
 ### Changed

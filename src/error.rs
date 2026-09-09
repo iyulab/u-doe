@@ -13,6 +13,19 @@ pub enum DoeError {
     MatrixError(String),
     /// Requested design not supported in v0.1.
     UnsupportedDesign(String),
+    /// A design matrix that must be two-level coded (every entry -1 or +1)
+    /// carries some other value.
+    NotTwoLevelCoded {
+        run: usize,
+        factor: usize,
+        value: f64,
+    },
+    /// Two requested effects share the same contrast column, so they are
+    /// aliased in this design and cannot be estimated separately.
+    AliasedEffects { first: String, second: String },
+    /// The requested model has more terms than the design has degrees of
+    /// freedom to spend on them.
+    OverSpecifiedModel { terms: usize, runs: usize },
 }
 
 impl std::fmt::Display for DoeError {
@@ -34,6 +47,19 @@ impl std::fmt::Display for DoeError {
             }
             DoeError::MatrixError(msg) => write!(f, "matrix error: {msg}"),
             DoeError::UnsupportedDesign(msg) => write!(f, "unsupported design: {msg}"),
+            DoeError::NotTwoLevelCoded { run, factor, value } => write!(
+                f,
+                "design is not two-level coded: run {run}, factor {factor} is {value},                  expected -1 or +1. Effect estimation multiplies factor columns to                  form contrasts, which is only defined for a two-level design; a                  design carrying centre points or axial points (central composite,                  Box-Behnken, definitive screening) must be fitted with                  `analysis::rsm::fit_rsm` instead"
+            ),
+            DoeError::AliasedEffects { first, second } => write!(
+                f,
+                "effects '{first}' and '{second}' share one contrast column and are                  therefore aliased in this design: they cannot both enter the model,                  because their sum of squares would be counted twice"
+            ),
+            DoeError::OverSpecifiedModel { terms, runs } => write!(
+                f,
+                "model has {terms} terms but the design has only {} degrees of freedom                  ({runs} runs); drop terms or add runs",
+                runs.saturating_sub(1)
+            ),
         }
     }
 }

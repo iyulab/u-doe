@@ -39,6 +39,35 @@ impl DesignMatrix {
         self.data[run][factor]
     }
 
+    /// First entry that is neither `-1` nor `+1`, as `(run, factor, value)`.
+    ///
+    /// Returns `None` when every entry is two-level coded. Effect estimation
+    /// builds contrast columns by multiplying factor columns together, which is
+    /// only defined for a two-level design — a design carrying centre points or
+    /// axial points (central composite, Box-Behnken, definitive screening) has
+    /// to be fitted by least squares instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use u_doe::design::factorial::full_factorial;
+    /// use u_doe::design::ccd::{ccd, AlphaType};
+    ///
+    /// assert!(full_factorial(2).unwrap().two_level_violation().is_none());
+    /// assert!(ccd(2, AlphaType::FaceCentered, 1).unwrap().two_level_violation().is_some());
+    /// ```
+    pub fn two_level_violation(&self) -> Option<(usize, usize, f64)> {
+        const TOL: f64 = 1e-9;
+        for (run, row) in self.data.iter().enumerate() {
+            for (factor, &value) in row.iter().enumerate() {
+                if (value.abs() - 1.0).abs() > TOL {
+                    return Some((run, factor, value));
+                }
+            }
+        }
+        None
+    }
+
     /// Default factor names: "A", "B", "C", ...
     pub fn default_names(k: usize) -> Vec<String> {
         (0..k)
