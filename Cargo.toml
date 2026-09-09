@@ -18,8 +18,8 @@ crate-type = ["cdylib", "rlib"]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:serde_json", "dep:serde"]
 
 [dependencies]
-u-numflow = { version = "0.4", path = "../../foundation/u-numflow" }
-u-analytics = { version = "0.7", path = "../../algorithms/u-analytics" }
+u-numflow = "0.4"
+u-analytics = "0.7"
 serde = { version = "1", features = ["derive"], optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
