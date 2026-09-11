@@ -228,10 +228,11 @@ Since 0.10.0 three further inputs are errors rather than misleading numbers:
 - the design is not two-level coded (any value other than `-1`/`+1`) — use `fit_rsm` for designs with centre or axial points;
 - two requested effects share a contrast column, so they are aliased and would contribute the same sum of squares twice;
 - the model asks for more terms than the design has degrees of freedom. An exactly saturated model stays legal, with `residual_df: 0`.
+- two requested effects are partially aliased — their contrasts are correlated without being identical, as a Plackett-Burman two-factor interaction is with other main effects. Their sums of squares would overlap, so the table would not be an ANOVA of the data.
 
 **Output:**
 ```json
-{ "effects": [{ "name": "A", "sum_of_squares": 10.0, "df": 1, "mean_square": 10.0, "f_statistic": 5.0, "p_value": 0.03 }], "residual_ss": 4.0, "residual_df": 2, "total_ss": 14.0, "r_squared": 0.71, "r_squared_adj": 0.57 }
+{ "effects": [{ "name": "A", "sum_of_squares": 10.0, "df": 1, "mean_square": 10.0, "f_statistic": 5.0, "p_value": 0.03 }], "residual_ss": 4.0, "residual_df": 2, "total_ss": 14.0, "r_squared": 0.71, "r_squared_adj": 0.57, "fitted": [12.1, 14.3, ...], "residuals": [0.4, -0.3, ...] }
 ```
 
 #### `signal_to_noise(responses, goal) -> [f64]`
@@ -257,6 +258,12 @@ Interaction names join factor names with `":"` (since 0.5.0; previously bare con
 Since 0.10.0 a design that is not two-level coded is an error. The contrast for a term is the product of its factor columns, which estimates an effect only when every column is `-1` or `+1`: a centre point zeroes that product and an axial point scales it. Central composite, Box-Behnken, definitive screening and three-level Taguchi arrays (L9/L18/L27) therefore belong in `fit_rsm`; two-level arrays (L4/L8/L12/L16), full and fractional factorials and Plackett-Burman designs are unaffected.
 
 Each `half_normal` point carries `term_index` — an index into `effects` — so a point can be labelled directly (e.g. `effects[point.term_index].name`). The points are sorted by `|effect|`, a **different order** from `effects` (model-term order), so pairing them positionally (`effects[i]` ↔ `half_normal[i]`) mislabels every point; always use `term_index`.
+
+The result also carries `lenth: { pse, margin_of_error, df, distinct_contrasts }` — Lenth's (1989) pseudo standard error and margin of error, the line to draw on the half-normal plot: effects beyond `margin_of_error` are judged active. It needs no replication, which is the point of it for saturated screening designs. Terms that share a contrast column (in a 2^(5-2), `A`, `B:D` and `C:E`) are counted once. `lenth` is `null` when there are fewer than 3 distinct contrasts.
+
+`max_order` goes up to the factor count (`4` on a 2^4 includes `A:B:C:D`); a higher order adds nothing, and `0` is an error.
+
+`doe_anova` returns per-run `fitted` and `residuals`, in run order, for residuals-versus-fitted and normal probability plots.
 
 #### `fit_rsm(design, responses, factor_names) -> RsmModel`
 

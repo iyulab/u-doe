@@ -111,6 +111,8 @@ struct DoeAnovaResultDto {
     total_ss: f64,
     r_squared: f64,
     r_squared_adj: f64,
+    fitted: Vec<f64>,
+    residuals: Vec<f64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +213,8 @@ pub fn definitive_screening(k: usize) -> Result<JsValue, JsValue> {
 /// `effect_names`: native array of effect names to include (e.g. `["A","B","A:B"]`).
 ///
 /// Returns an ANOVA result object with `effects`, `residual_ss`, `residual_df`,
-/// `total_ss`, `r_squared`, `r_squared_adj`.
+/// `total_ss`, `r_squared`, `r_squared_adj`, and per-run `fitted` and
+/// `residuals` (in run order) for residual plots.
 ///
 /// # Errors
 /// Returns an error string if dimensions do not match or an argument has the
@@ -251,6 +254,8 @@ pub fn doe_anova(
         total_ss: result.total_ss,
         r_squared: result.r_squared,
         r_squared_adj: result.r_squared_adj,
+        fitted: result.fitted,
+        residuals: result.residuals,
     };
     to_js(&dto)
 }
@@ -389,9 +394,20 @@ struct HalfNormalPointDto {
 }
 
 #[derive(Serialize)]
+struct LenthDto {
+    pse: f64,
+    margin_of_error: f64,
+    df: f64,
+    distinct_contrasts: usize,
+}
+
+#[derive(Serialize)]
 struct EstimateEffectsResultDto {
     effects: Vec<EffectEstimateDto>,
     half_normal: Vec<HalfNormalPointDto>,
+    /// Lenth's margin of error -- the line a half-normal plot is read against.
+    /// `null` when there are fewer than 3 distinct contrasts.
+    lenth: Option<LenthDto>,
 }
 
 /// Estimate main effects and interactions for a 2-level factorial design,
@@ -400,10 +416,15 @@ struct EstimateEffectsResultDto {
 /// `design`: native array-of-arrays `[[f64]]` — the coded design matrix (rows = runs).
 /// `responses`: flat array of response values, one per run.
 /// `factor_names`: native array of factor name strings.
-/// `max_order`: maximum interaction order (1 = main effects only, 2 = + 2FI, 3 = + 3FI).
+/// `max_order`: maximum interaction order (1 = main effects only, 2 = + 2FI, and so on up to
+///   the factor count; 0 is an error).
 ///
 /// Returns `{ effects: [{ name, columns, estimate, sum_of_squares, percent_contribution }],
-///            half_normal: [{ term_index, abs_effect, quantile }] }`.
+///            half_normal: [{ term_index, abs_effect, quantile }],
+///            lenth: { pse, margin_of_error, df, distinct_contrasts } | null }`.
+/// `lenth.margin_of_error` is the line to draw on the half-normal plot: effects
+/// beyond it are judged active (Lenth 1989). Aliased terms are counted once.
+/// `lenth` is `null` when the design has fewer than 3 distinct contrasts.
 /// Each `half_normal` point carries `term_index` (an index into `effects`) so the
 /// point can be labelled directly — the points are sorted by `|effect|`, a
 /// different order from `effects`, so positional pairing would mislabel them.
@@ -424,6 +445,17 @@ pub fn estimate_effects(
     let design = crate::design::DesignMatrix { data, factor_names };
     let effects = crate::analysis::effects::estimate_effects(&design, responses, max_order)
         .map_err(js_err)?;
+
+    // The only failure reachable here is "fewer than 3 distinct contrasts":
+    // the design was already validated by `estimate_effects`.
+    let lenth = crate::analysis::lenth::lenth(&design, &effects)
+        .ok()
+        .map(|r| LenthDto {
+            pse: r.pse,
+            margin_of_error: r.margin_of_error,
+            df: r.df,
+            distinct_contrasts: r.distinct_contrasts,
+        });
 
     let half_normal = crate::analysis::effects::half_normal_plot_data(&effects)
         .into_iter()
@@ -446,6 +478,7 @@ pub fn estimate_effects(
             })
             .collect(),
         half_normal,
+        lenth,
     };
     to_js(&dto)
 }

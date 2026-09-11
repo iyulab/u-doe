@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `analysis::lenth::lenth` -- Lenth's (1989) pseudo standard error and margin
+  of error for unreplicated and saturated designs, where there are no residual
+  degrees of freedom to test against. Terms that share a contrast column are
+  counted once: in a 2^(5-2), `A`, `B:D` and `C:E` are one contrast, and
+  counting each would repeat the same magnitude and inflate the degrees of
+  freedom. Only the individual margin is reported; the simultaneous margin is
+  quoted with different quantiles by different sources.
+- `DoeAnovaResult::fitted` and `DoeAnovaResult::residuals`, per run, for
+  residuals-versus-fitted and normal probability plots. With orthogonal
+  contrasts each coefficient is half its effect, so no matrix solve is needed.
+- WebAssembly: `doe_anova` returns `fitted` and `residuals`; `estimate_effects`
+  returns `lenth: { pse, margin_of_error, df, distinct_contrasts }` (or `null`
+  with fewer than 3 distinct contrasts) -- the line a half-normal plot is read
+  against.
+
+### Changed
+
+- **Breaking:** `doe_anova` refuses effects whose contrasts are correlated
+  without being identical, with `DoeError::PartiallyAliasedEffects`. It built
+  the model sum of squares by adding per-term sums of squares, which is exact
+  only for orthogonal contrasts; a Plackett-Burman two-factor interaction is
+  correlated with other main effects, so the table was not an ANOVA of the data
+  and the residual could be clamped to zero without notice.
+- **Breaking:** `DoeAnovaResult` has two new public fields.
+
 ### Removed
 
 - The dependency on `u-analytics`. It was declared, and kept current through

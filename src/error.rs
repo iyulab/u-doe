@@ -23,6 +23,12 @@ pub enum DoeError {
     /// Two requested effects share the same contrast column, so they are
     /// aliased in this design and cannot be estimated separately.
     AliasedEffects { first: String, second: String },
+    /// Two requested effects -- or an effect and the overall mean, written `I` --
+    /// have contrasts that are correlated without being identical. The per-term
+    /// sums of squares then overlap, so they do not add up to the model sum of
+    /// squares and no ANOVA can be built from them. Plackett-Burman designs
+    /// produce this for two-factor interactions.
+    PartiallyAliasedEffects { first: String, second: String },
     /// The requested model has more terms than the design has degrees of
     /// freedom to spend on them.
     OverSpecifiedModel { terms: usize, runs: usize },
@@ -55,7 +61,12 @@ impl std::fmt::Display for DoeError {
                 f,
                 "effects '{first}' and '{second}' share one contrast column and are                  therefore aliased in this design: they cannot both enter the model,                  because their sum of squares would be counted twice"
             ),
-            DoeError::OverSpecifiedModel { terms, runs } => write!(
+            DoeError::PartiallyAliasedEffects { first, second } => write!(
+                f,
+                "effects {first} and {second} are partially aliased: their contrasts are \
+                 correlated, so their sums of squares overlap; drop one, or fit the terms \
+                 together by regression"
+            ),            DoeError::OverSpecifiedModel { terms, runs } => write!(
                 f,
                 "model has {terms} terms but the design has only {} degrees of freedom                  ({runs} runs); drop terms or add runs",
                 runs.saturating_sub(1)

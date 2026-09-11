@@ -49,7 +49,8 @@ pub struct EffectEstimate {
 /// # Arguments
 /// * `design`    — The experimental design matrix (coded ±1 values)
 /// * `responses` — Observed response values, one per run
-/// * `max_order` — Maximum interaction order: 1 = main effects, 2 = + 2FI
+/// * `max_order` — Maximum interaction order: 1 = main effects, 2 = + 2FI, and so
+///   on up to the factor count (a higher order adds nothing — there are no such terms)
 ///
 /// # Errors
 ///
@@ -103,6 +104,13 @@ pub fn estimate_effects(
     // the alternative is a number that looks like an effect and is not one.
     if let Some((run, factor, value)) = design.two_level_violation() {
         return Err(DoeError::NotTwoLevelCoded { run, factor, value });
+    }
+
+    // Asking for no terms at all used to return the main effects anyway.
+    if max_order == 0 {
+        return Err(DoeError::UnsupportedDesign(
+            "max_order must be at least 1 (main effects)".to_string(),
+        ));
     }
 
     // Collect terms to estimate
@@ -213,33 +221,23 @@ pub fn half_normal_plot_data(effects: &[EffectEstimate]) -> Vec<HalfNormalPoint>
 
 /// Build list of terms (as column index sets) up to `max_order`.
 fn build_terms(k: usize, max_order: usize) -> Vec<Vec<usize>> {
+    // Every combination of factor columns, by order. An order above k has no
+    // terms, so asking for one yields everything up to k rather than an error.
     let mut terms = Vec::new();
-
-    // Main effects: single-column terms
-    for i in 0..k {
-        terms.push(vec![i]);
-    }
-
-    // Two-factor interactions
-    if max_order >= 2 {
-        for i in 0..k {
-            for j in (i + 1)..k {
-                terms.push(vec![i, j]);
+    for order in 1..=max_order.min(k) {
+        let mut combo: Vec<usize> = (0..order).collect();
+        loop {
+            terms.push(combo.clone());
+            // Advance to the next combination in lexicographic order.
+            let Some(pos) = (0..order).rev().find(|&i| combo[i] < k - order + i) else {
+                break;
+            };
+            combo[pos] += 1;
+            for i in (pos + 1)..order {
+                combo[i] = combo[i - 1] + 1;
             }
         }
     }
-
-    // Three-factor interactions (if requested)
-    if max_order >= 3 {
-        for i in 0..k {
-            for j in (i + 1)..k {
-                for l in (j + 1)..k {
-                    terms.push(vec![i, j, l]);
-                }
-            }
-        }
-    }
-
     terms
 }
 
@@ -312,6 +310,27 @@ fn normal_quantile(p: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Orders above three used to be dropped without a word: a 2^4 asked for
+    /// every interaction came back without A:B:C:D.
+    #[test]
+    fn every_interaction_order_is_available() {
+        let design = crate::design::factorial::full_factorial(4).expect("2^4");
+        let y: Vec<f64> = (0..16).map(|i| i as f64).collect();
+        let all = estimate_effects(&design, &y, 4).expect("valid");
+        assert_eq!(all.len(), 15);
+        assert!(all.iter().any(|e| e.name == "A:B:C:D"), "4FI missing");
+        // There are no terms above the factor count, so a higher order adds nothing.
+        assert_eq!(estimate_effects(&design, &y, 9).expect("valid").len(), 15);
+        // Orders 1..=3 are unchanged: 4 + 6 + 4.
+        assert_eq!(estimate_effects(&design, &y, 3).expect("valid").len(), 14);
+    }
+
+    #[test]
+    fn max_order_zero_is_an_error() {
+        let design = crate::design::factorial::full_factorial(2).expect("2^2");
+        assert!(estimate_effects(&design, &[1.0, 2.0, 3.0, 4.0], 0).is_err());
+    }
     use crate::design::factorial::full_factorial;
 
     // Montgomery (2019) Example 6.2 — Filtration rate experiment (2^4 design)

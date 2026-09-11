@@ -41,6 +41,14 @@ pub struct DoeAnovaResult {
     pub r_squared: f64,
     /// Adjusted R² = 1 - (SS_residual/df_residual) / (SS_total/df_total).
     pub r_squared_adj: f64,
+    /// Fitted value for each run, in run order: the grand mean plus half of
+    /// each requested effect times its contrast. Exact for the model because
+    /// the requested contrasts are orthogonal and balanced (see Errors).
+    pub fitted: Vec<f64>,
+    /// `responses[i] - fitted[i]` for each run. Their squares sum to
+    /// [`residual_ss`](Self::residual_ss); they are what a residuals-versus-
+    /// fitted or normal probability plot needs.
+    pub residuals: Vec<f64>,
 }
 
 /// Compute DOE ANOVA for specified effects.
@@ -58,9 +66,12 @@ pub struct DoeAnovaResult {
 /// any estimable effect (main effects and two-factor interactions);
 /// [`DoeError::NotTwoLevelCoded`] if the design carries a value other than
 /// `-1` or `+1`; [`DoeError::AliasedEffects`] if two requested effects share a
-/// contrast column, which would count the same sum of squares twice; or
-/// [`DoeError::OverSpecifiedModel`] if the model asks for more terms than the
-/// design has degrees of freedom.
+/// contrast column, which would count the same sum of squares twice;
+/// [`DoeError::PartiallyAliasedEffects`] if two requested contrasts are
+/// correlated without being identical, or one is correlated with the mean --
+/// the per-term sums of squares would then overlap and not add up to the model
+/// sum of squares; or [`DoeError::OverSpecifiedModel`] if the model asks for
+/// more terms than the design has degrees of freedom.
 ///
 /// # Examples
 ///
@@ -143,6 +154,37 @@ pub fn doe_anova(
         }
     }
 
+    // The table below sums per-term sums of squares into the model sum of
+    // squares, and builds fitted values from half-effects. Both are exact only
+    // when every requested contrast is balanced (orthogonal to the mean) and
+    // the contrasts are pairwise orthogonal. Regular fractions satisfy this for
+    // any estimable set; a Plackett-Burman two-factor interaction does not --
+    // it is correlated with other main effects. The contrasts are products of
+    // +/-1, so their sums and dot products are integers.
+    for (i, contrast) in contrasts.iter().enumerate() {
+        if contrast.iter().sum::<f64>().abs() > 0.5 {
+            return Err(DoeError::PartiallyAliasedEffects {
+                first: selected[i].name.clone(),
+                second: "I".to_string(),
+            });
+        }
+    }
+    for i in 0..contrasts.len() {
+        for j in (i + 1)..contrasts.len() {
+            let dot: f64 = contrasts[i]
+                .iter()
+                .zip(contrasts[j].iter())
+                .map(|(a, b)| a * b)
+                .sum();
+            if dot.abs() > 0.5 {
+                return Err(DoeError::PartiallyAliasedEffects {
+                    first: selected[i].name.clone(),
+                    second: selected[j].name.clone(),
+                });
+            }
+        }
+    }
+
     let model_df = selected.len();
     if model_df > total_df {
         return Err(DoeError::OverSpecifiedModel {
@@ -199,6 +241,24 @@ pub fn doe_anova(
         r_squared
     };
 
+    // With orthogonal, balanced contrasts the least-squares coefficient of each
+    // term is half its effect, so no matrix solve is needed.
+    let fitted: Vec<f64> = (0..n)
+        .map(|run| {
+            grand_mean
+                + selected
+                    .iter()
+                    .zip(contrasts.iter())
+                    .map(|(e, c)| e.estimate / 2.0 * c[run])
+                    .sum::<f64>()
+        })
+        .collect();
+    let residuals: Vec<f64> = responses
+        .iter()
+        .zip(fitted.iter())
+        .map(|(y, f)| y - f)
+        .collect();
+
     Ok(DoeAnovaResult {
         effects,
         residual_ss,
@@ -206,6 +266,8 @@ pub fn doe_anova(
         total_ss,
         r_squared,
         r_squared_adj,
+        fitted,
+        residuals,
     })
 }
 
@@ -324,6 +386,52 @@ fn lgamma(x: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn residuals_square_to_the_residual_sum_of_squares() {
+        let design = crate::design::factorial::full_factorial(3).expect("2^3");
+        let responses = [10.0, 20.0, 15.0, 25.0, 12.0, 22.0, 18.0, 30.0];
+        let result = doe_anova(&design, &responses, &["A", "B", "C"]).expect("valid");
+        let ss: f64 = result.residuals.iter().map(|r| r * r).sum();
+        assert!(
+            (ss - result.residual_ss).abs() < 1e-9,
+            "{ss} vs {}",
+            result.residual_ss
+        );
+        assert!(result.residuals.iter().sum::<f64>().abs() < 1e-9);
+        for ((y, f), r) in responses.iter().zip(&result.fitted).zip(&result.residuals) {
+            assert!((y - f - r).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn a_saturated_model_fits_every_run_exactly() {
+        let design = crate::design::factorial::full_factorial(2).expect("2^2");
+        let responses = [28.0, 36.0, 18.0, 31.0];
+        let result = doe_anova(&design, &responses, &["A", "B", "A:B"]).expect("valid");
+        assert_eq!(result.residual_df, 0);
+        for (y, f) in responses.iter().zip(&result.fitted) {
+            assert!((y - f).abs() < 1e-9, "{y} vs {f}");
+        }
+    }
+
+    /// In a 12-run Plackett-Burman design a two-factor interaction column is
+    /// correlated with the main effects it does not contain (by +/-1/3). The
+    /// per-term sums of squares then do not add up to the model sum of
+    /// squares, so a table built from them is not an ANOVA of this data.
+    #[test]
+    fn partially_aliased_effects_are_refused() {
+        let design = crate::design::plackett_burman::plackett_burman(8).expect("pb12");
+        assert_eq!(design.run_count(), 12);
+        let responses: Vec<f64> = (0..12).map(|i| 10.0 + (i * 7 % 5) as f64).collect();
+        let names = ["A", "B", "C", "D", "E", "F", "G", "H", "A:B"];
+        let result = doe_anova(&design, &responses, &names);
+        assert!(
+            matches!(result, Err(DoeError::PartiallyAliasedEffects { .. })),
+            "partially aliased model accepted: {result:?}"
+        );
+        // The main effects alone are orthogonal and still analysable.
+        doe_anova(&design, &responses, &names[..8]).expect("main effects are orthogonal");
+    }
     use super::*;
     use crate::design::factorial::full_factorial;
 
