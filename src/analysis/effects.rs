@@ -61,6 +61,17 @@ pub struct EffectEstimate {
 /// design with centre points or axial points (central composite, Box-Behnken,
 /// definitive screening) belongs in [`crate::analysis::rsm::fit_rsm`].
 ///
+/// The contrast formula is exact only when every contrast is balanced (sums to
+/// zero) and each pair is orthogonal or coincides. Otherwise the input is
+/// refused rather than answered:
+/// [`DoeError::PartiallyAliasedEffects`] with `I` (the overall mean) as the
+/// second term if a contrast does not sum to zero -- the runs are unbalanced,
+/// as when a failed run is left out -- or with two terms whose contrasts are
+/// correlated, as a 12-run Plackett-Burman's two-factor interactions are with
+/// main effects; [`DoeError::AliasedEffects`] with `I` if a contrast is the
+/// same in every run. Terms whose contrasts coincide, as aliases in a regular
+/// fraction do, are returned.
+///
 /// # Examples
 ///
 /// ```
@@ -73,6 +84,77 @@ pub struct EffectEstimate {
 /// assert_eq!(effects.len(), 3); // A, B, A:B
 /// ```
 pub fn estimate_effects(
+    design: &DesignMatrix,
+    responses: &[f64],
+    max_order: usize,
+) -> Result<Vec<EffectEstimate>, DoeError> {
+    let effects = contrast_effects(design, responses, max_order)?;
+    let names: Vec<&str> = effects.iter().map(|e| e.name.as_str()).collect();
+    let contrasts: Vec<Vec<f64>> = effects
+        .iter()
+        .map(|e| contrast_column(design, &e.columns))
+        .collect();
+    require_orthogonal_contrasts(&names, &contrasts)?;
+    Ok(effects)
+}
+
+/// The contrast column of a term: the run-by-run product of its factor columns.
+pub(crate) fn contrast_column(design: &DesignMatrix, columns: &[usize]) -> Vec<f64> {
+    (0..design.run_count())
+        .map(|run| columns.iter().map(|&c| design.get(run, c)).product())
+        .collect()
+}
+
+/// Refuse contrasts the contrast formula cannot analyse: one that does not sum
+/// to zero (correlated with the mean), one that is constant (aliased with the
+/// mean), or two that are correlated without coinciding. Coinciding pairs pass
+/// -- they are aliases, which callers either count once or refuse themselves.
+///
+/// The contrasts are products of +/-1, so every sum and dot product is an
+/// integer. O(t^2 * n) for t terms over n runs.
+pub(crate) fn require_orthogonal_contrasts(
+    names: &[&str],
+    contrasts: &[Vec<f64>],
+) -> Result<(), DoeError> {
+    for (name, contrast) in names.iter().zip(contrasts) {
+        let n = contrast.len() as f64;
+        let sum: f64 = contrast.iter().sum();
+        if (sum.abs() - n).abs() < 0.5 {
+            return Err(DoeError::AliasedEffects {
+                first: name.to_string(),
+                second: "I".to_string(),
+            });
+        }
+        if sum.abs() > 0.5 {
+            return Err(DoeError::PartiallyAliasedEffects {
+                first: name.to_string(),
+                second: "I".to_string(),
+            });
+        }
+    }
+    for i in 0..contrasts.len() {
+        let n = contrasts[i].len() as f64;
+        for j in (i + 1)..contrasts.len() {
+            let dot: f64 = contrasts[i]
+                .iter()
+                .zip(&contrasts[j])
+                .map(|(a, b)| a * b)
+                .sum();
+            let coincide = (dot.abs() - n).abs() < 0.5;
+            if dot.abs() > 0.5 && !coincide {
+                return Err(DoeError::PartiallyAliasedEffects {
+                    first: names[i].to_string(),
+                    second: names[j].to_string(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// [`estimate_effects`] without the orthogonality check, for callers that pick
+/// a subset of the terms and check that subset themselves.
+pub(crate) fn contrast_effects(
     design: &DesignMatrix,
     responses: &[f64],
     max_order: usize,
@@ -123,10 +205,7 @@ pub fn estimate_effects(
     let mut estimates = Vec::with_capacity(terms.len());
 
     for term in terms {
-        // Contrast column = product of factor columns for this term
-        let contrast: Vec<f64> = (0..n)
-            .map(|run| term.iter().map(|&col| design.get(run, col)).product())
-            .collect();
+        let contrast = contrast_column(design, &term);
 
         // Effect = (2/n) * dot(contrast, responses)
         let dot: f64 = contrast
@@ -605,6 +684,84 @@ mod tests {
         assert!(matches!(
             estimate_effects(&no_factors, &[1.0, 2.0], 2),
             Err(DoeError::UnsupportedDesign(_))
+        ));
+    }
+
+    /// A replicated 2^3, y = 50 + 5A + 3B + C + 2AB. Balanced, the contrast
+    /// estimate is twice the coefficient. With one run dropped -- a failed run
+    /// left out of the analysis -- every contrast sums to +/-1 and the contrast
+    /// formula no longer estimates anything: the per-term sums of squares
+    /// added up to several times the total.
+    #[test]
+    fn refuses_a_design_with_a_dropped_run() {
+        use crate::design::{factorial::full_factorial, DesignMatrix};
+
+        let base = full_factorial(3).expect("2^3");
+        let rows: Vec<Vec<f64>> = base.data.iter().chain(base.data.iter()).cloned().collect();
+        let y: Vec<f64> = rows
+            .iter()
+            .map(|r| 50.0 + 5.0 * r[0] + 3.0 * r[1] + r[2] + 2.0 * r[0] * r[1])
+            .collect();
+
+        let balanced = DesignMatrix {
+            data: rows.clone(),
+            factor_names: base.factor_names.clone(),
+        };
+        let effects = estimate_effects(&balanced, &y, 2).expect("balanced");
+        let a = effects.iter().find(|e| e.name == "A").expect("A");
+        assert!((a.estimate - 10.0).abs() < 1e-12, "A = {}", a.estimate);
+
+        let dropped = DesignMatrix {
+            data: rows[1..].to_vec(),
+            factor_names: base.factor_names.clone(),
+        };
+        for order in [1, 2] {
+            match estimate_effects(&dropped, &y[1..], order) {
+                Err(DoeError::PartiallyAliasedEffects { second, .. }) => assert_eq!(second, "I"),
+                other => panic!("order {order}: expected a refusal, got {other:?}"),
+            }
+        }
+    }
+
+    /// Each column can sum to zero and the columns still be correlated: here
+    /// the (-,-) and (+,+) corners are run twice, so A.B = 2.
+    #[test]
+    fn refuses_correlated_main_effects() {
+        use crate::design::DesignMatrix;
+
+        let design = DesignMatrix {
+            data: vec![
+                vec![-1.0, -1.0],
+                vec![-1.0, -1.0],
+                vec![1.0, 1.0],
+                vec![1.0, 1.0],
+                vec![-1.0, 1.0],
+                vec![1.0, -1.0],
+            ],
+            factor_names: vec!["A".into(), "B".into()],
+        };
+        let y = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        assert!(matches!(
+            estimate_effects(&design, &y, 1),
+            Err(DoeError::PartiallyAliasedEffects { .. })
+        ));
+    }
+
+    /// A 12-run Plackett-Burman estimates main effects; its two-factor
+    /// interactions are correlated with main effects they do not contain.
+    /// Terms that coincide exactly -- aliases in a regular fraction -- are
+    /// still returned (`accepts_full_and_fractional_factorials`).
+    #[test]
+    fn a_twelve_run_plackett_burman_supports_main_effects_only() {
+        use crate::design::plackett_burman::plackett_burman;
+
+        let design = plackett_burman(8).expect("12-run");
+        assert_eq!(design.run_count(), 12);
+        let y: Vec<f64> = (0..12).map(|i| (i * 7 % 5) as f64).collect();
+        assert!(estimate_effects(&design, &y, 1).is_ok());
+        assert!(matches!(
+            estimate_effects(&design, &y, 2),
+            Err(DoeError::PartiallyAliasedEffects { .. })
         ));
     }
 }

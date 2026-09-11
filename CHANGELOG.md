@@ -44,6 +44,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only for orthogonal contrasts; a Plackett-Burman two-factor interaction is
   correlated with other main effects, so the table was not an ANOVA of the data
   and the residual could be clamped to zero without notice.
+- **Breaking:** `estimate_effects` applies the same check, to every term up to
+  `max_order`: a contrast that does not sum to zero is refused as partially
+  aliased with the mean (`I`), and two that are correlated without coinciding
+  are refused as partially aliased with each other. The contrast formula it
+  uses is exact only for balanced, orthogonal columns, and a design with a run
+  left out or unequal replication breaks both -- the effects, sums of squares
+  and percent contributions it returned looked plausible and were not. For a
+  replicated 2^3 with one run removed, the sums of squares added up to 3.6
+  times the total. Terms whose columns coincide exactly, as aliases in a regular
+  fraction do, are still returned and `lenth` counts them once; a 12-run
+  Plackett-Burman is refused at `max_order` 2 and accepted at 1. `lenth` checks
+  the effects it is given the same way.
 - **Breaking:** `DoeAnovaResult` has four new public fields (`fitted`,
   `residuals`, `curvature`, `pure_error`). With centre points, `r_squared`
   counts the curvature term as part of the model.

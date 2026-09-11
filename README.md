@@ -243,6 +243,13 @@ Compute Taguchi S/N ratios. `responses`: `[[f64]]` (replicates per run). `goal`:
 
 Estimate main effects and interactions for a 2-level factorial design.
 
+Since 0.11.0 the runs must be balanced and the contrasts orthogonal, as the
+contrast formula assumes. A design with a run left out or unequal replication
+is an error rather than a set of plausible-looking effects, and so is a term
+correlated with another -- a 12-run Plackett-Burman's two-factor interactions
+are, so it is analysed at `max_order` 1. Terms that coincide exactly (aliases
+in a regular fraction) are still returned.
+
 **Output:**
 ```json
 { "effects": [

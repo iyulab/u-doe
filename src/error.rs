@@ -61,11 +61,24 @@ impl std::fmt::Display for DoeError {
                  with axial or three-level points (central composite, Box-Behnken, \
                  definitive screening) must be fitted with `analysis::rsm::fit_rsm`"
             ),
+            DoeError::AliasedEffects { first, second } if second == "I" => write!(
+                f,
+                "effect '{first}' is aliased with the overall mean: its contrast is the \
+                 same in every run, so it would estimate the mean rather than an effect; \
+                 lower the interaction order or drop the term"
+            ),
             DoeError::AliasedEffects { first, second } => write!(
                 f,
                 "effects '{first}' and '{second}' share one contrast column and are \
                  therefore aliased in this design: they cannot both enter the model, \
                  because their sum of squares would be counted twice"
+            ),
+            DoeError::PartiallyAliasedEffects { first, second } if second == "I" => write!(
+                f,
+                "effect '{first}' is correlated with the overall mean: its contrast does not \
+                 sum to zero, as happens when the runs are unbalanced (a run left out, or \
+                 unequal replication), so its estimate absorbs part of the mean; balance the \
+                 runs, or fit the terms together by regression"
             ),
             DoeError::PartiallyAliasedEffects { first, second } => write!(
                 f,
@@ -106,6 +119,14 @@ mod tests {
             DoeError::PartiallyAliasedEffects {
                 first: "A:B".into(),
                 second: "C".into(),
+            },
+            DoeError::PartiallyAliasedEffects {
+                first: "A".into(),
+                second: "I".into(),
+            },
+            DoeError::AliasedEffects {
+                first: "A:B:C".into(),
+                second: "I".into(),
             },
             DoeError::OverSpecifiedModel { terms: 9, runs: 8 },
             DoeError::UnknownEffect { name: "Z".into() },

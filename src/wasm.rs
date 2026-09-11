@@ -463,7 +463,10 @@ struct EstimateEffectsResultDto {
 ///
 /// # Errors
 /// Returns an error string if dimensions do not match or an argument has the
-/// wrong shape (arguments are native JS values, not JSON strings).
+/// wrong shape (arguments are native JS values, not JSON strings), or if the
+/// runs are unbalanced or two terms are partially aliased -- a run left out,
+/// unequal replication, or a 12-run Plackett-Burman at `max_order` 2. The
+/// contrast formula gives plausible-looking and wrong numbers for those.
 #[wasm_bindgen]
 pub fn estimate_effects(
     design: JsValue,

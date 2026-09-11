@@ -26,7 +26,11 @@
 //! Reference: Lenth, R.V. (1989). "Quick and Easy Analysis of Unreplicated
 //! Factorials". *Technometrics* 31(4), pp. 469–473.
 
-use crate::{analysis::effects::EffectEstimate, design::DesignMatrix, error::DoeError};
+use crate::{
+    analysis::effects::{contrast_column, require_orthogonal_contrasts, EffectEstimate},
+    design::DesignMatrix,
+    error::DoeError,
+};
 
 /// Lenth's pseudo standard error and margin of error for a set of effects.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -54,7 +58,10 @@ pub struct LenthResult {
 /// [`DoeError::NotTwoLevelCoded`] if the design is not two-level coded;
 /// [`DoeError::UnsupportedDesign`] if an effect names a column the design does
 /// not have, or if there are fewer than 3 distinct contrasts -- the reference
-/// distribution then has less than one degree of freedom.
+/// distribution then has less than one degree of freedom;
+/// [`DoeError::PartiallyAliasedEffects`] or [`DoeError::AliasedEffects`] if the
+/// distinct contrasts are not balanced and mutually orthogonal, on the same
+/// terms as [`estimate_effects`](crate::analysis::effects::estimate_effects).
 ///
 /// # Examples
 ///
@@ -85,20 +92,24 @@ pub fn lenth(design: &DesignMatrix, effects: &[EffectEstimate]) -> Result<LenthR
     // One magnitude per distinct contrast column. Aliased terms share a column
     // (or its negative) and therefore the same magnitude.
     let mut columns: Vec<Vec<f64>> = Vec::new();
+    let mut names: Vec<&str> = Vec::new();
     let mut magnitudes: Vec<f64> = Vec::new();
     for e in effects {
-        let contrast: Vec<f64> = (0..n)
-            .map(|run| e.columns.iter().map(|&c| design.get(run, c)).product())
-            .collect();
+        let contrast = contrast_column(design, &e.columns);
         let seen = columns.iter().any(|other| {
             let dot: f64 = other.iter().zip(&contrast).map(|(a, b)| a * b).sum();
             (dot.abs() - n as f64).abs() < 0.5
         });
         if !seen {
             columns.push(contrast);
+            names.push(&e.name);
             magnitudes.push(e.estimate.abs());
         }
     }
+    // Effect sparsity reads the magnitudes as independent draws, which holds
+    // for balanced, orthogonal contrasts. `effects` is public data and need not
+    // have come from `estimate_effects`, so the check is repeated here.
+    require_orthogonal_contrasts(&names, &columns)?;
 
     let m = magnitudes.len();
     if m < 3 {
@@ -187,6 +198,35 @@ mod tests {
         assert!(effects.len() > 7, "the model terms outnumber the contrasts");
         let r = lenth(&design, &effects).expect("valid");
         assert_eq!(r.distinct_contrasts, 7);
+    }
+
+    /// Effects are public data, so `lenth` can be handed some that
+    /// `estimate_effects` would not have produced -- here for a 2^3 with a run
+    /// missing, where no contrast is balanced.
+    #[test]
+    fn refuses_contrasts_that_are_not_balanced() {
+        use crate::design::DesignMatrix;
+
+        let base = full_factorial(3).expect("2^3");
+        let design = DesignMatrix {
+            data: base.data[1..].to_vec(),
+            factor_names: base.factor_names.clone(),
+        };
+        let effects: Vec<EffectEstimate> = ["A", "B", "C"]
+            .iter()
+            .enumerate()
+            .map(|(i, name)| EffectEstimate {
+                name: name.to_string(),
+                columns: vec![i],
+                estimate: (i + 1) as f64,
+                sum_of_squares: 0.0,
+                percent_contribution: 0.0,
+            })
+            .collect();
+        assert!(matches!(
+            lenth(&design, &effects),
+            Err(DoeError::PartiallyAliasedEffects { .. })
+        ));
     }
 
     #[test]

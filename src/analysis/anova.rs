@@ -6,7 +6,7 @@
 //! Reference: Montgomery, D.C. (2019). *Introduction to Statistical Quality
 //! Control*, 8th ed., Section 6.4. Wiley.
 
-use crate::{analysis::effects::estimate_effects, design::DesignMatrix, error::DoeError};
+use crate::{design::DesignMatrix, error::DoeError};
 
 /// One row in the ANOVA table.
 #[derive(Debug, Clone)]
@@ -120,7 +120,8 @@ pub struct DoeAnovaResult {
 /// factor `-1` or `+1`) nor a centre point (every factor `0`) -- axial and
 /// three-level designs belong in [`crate::analysis::rsm::fit_rsm`];
 /// [`DoeError::AliasedEffects`] if two requested effects share a contrast
-/// column, which would count the same sum of squares twice;
+/// column, which would count the same sum of squares twice, or a requested
+/// contrast is the same in every run (aliased with the mean, `I`);
 /// [`DoeError::PartiallyAliasedEffects`] if two requested contrasts are
 /// correlated without being identical, or one is correlated with the mean --
 /// the per-term sums of squares would then overlap and not add up to the model
@@ -171,14 +172,18 @@ pub fn doe_anova(
     // rejects a design with no factorial runs and any run that is neither two-
     // level coded nor a centre point -- reported in the caller's run numbering,
     // before `total_df = n - 1` below could underflow.
-    let all_effects = estimate_effects(&factorial, &factorial_y, 2).map_err(|e| match e {
-        DoeError::NotTwoLevelCoded { run, factor, value } => DoeError::NotTwoLevelCoded {
-            run: factorial_runs[run],
-            factor,
-            value,
-        },
-        other => other,
-    })?;
+    // Unchecked: only the requested terms have to be orthogonal, and they are
+    // checked below -- a 12-run Plackett-Burman's interactions are correlated
+    // with its main effects, which does not stop an ANOVA of the main effects.
+    let all_effects = crate::analysis::effects::contrast_effects(&factorial, &factorial_y, 2)
+        .map_err(|e| match e {
+            DoeError::NotTwoLevelCoded { run, factor, value } => DoeError::NotTwoLevelCoded {
+                run: factorial_runs[run],
+                factor,
+                value,
+            },
+            other => other,
+        })?;
 
     // Grand mean and total SS, over every run
     let grand_mean = responses.iter().sum::<f64>() / n as f64;
@@ -237,31 +242,11 @@ pub fn doe_anova(
     // when every requested contrast is balanced (orthogonal to the mean) and
     // the contrasts are pairwise orthogonal. Regular fractions satisfy this for
     // any estimable set; a Plackett-Burman two-factor interaction does not --
-    // it is correlated with other main effects. The contrasts are products of
-    // +/-1, so their sums and dot products are integers.
-    for (i, contrast) in contrasts.iter().enumerate() {
-        if contrast.iter().sum::<f64>().abs() > 0.5 {
-            return Err(DoeError::PartiallyAliasedEffects {
-                first: selected[i].name.clone(),
-                second: "I".to_string(),
-            });
-        }
-    }
-    for i in 0..contrasts.len() {
-        for j in (i + 1)..contrasts.len() {
-            let dot: f64 = contrasts[i]
-                .iter()
-                .zip(contrasts[j].iter())
-                .map(|(a, b)| a * b)
-                .sum();
-            if dot.abs() > 0.5 {
-                return Err(DoeError::PartiallyAliasedEffects {
-                    first: selected[i].name.clone(),
-                    second: selected[j].name.clone(),
-                });
-            }
-        }
-    }
+    // it is correlated with other main effects -- and neither does a design
+    // with a run left out. Only the requested terms are checked: a 12-run
+    // Plackett-Burman supports an ANOVA of its main effects.
+    let names: Vec<&str> = selected.iter().map(|e| e.name.as_str()).collect();
+    crate::analysis::effects::require_orthogonal_contrasts(&names, &contrasts)?;
 
     // Curvature: the difference between the factorial and centre means,
     // scaled to a one-degree-of-freedom sum of squares.
