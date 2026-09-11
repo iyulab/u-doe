@@ -232,7 +232,7 @@ Since 0.10.0 three further inputs are errors rather than misleading numbers:
 
 **Output:**
 ```json
-{ "effects": [{ "name": "A", "sum_of_squares": 10.0, "df": 1, "mean_square": 10.0, "f_statistic": 5.0, "p_value": 0.03 }], "residual_ss": 4.0, "residual_df": 2, "total_ss": 14.0, "r_squared": 0.71, "r_squared_adj": 0.57, "fitted": [12.1, 14.3, ...], "residuals": [0.4, -0.3, ...] }
+{ "effects": [{ "name": "A", "sum_of_squares": 10.0, "df": 1, "mean_square": 10.0, "f_statistic": 5.0, "p_value": 0.03 }], "residual_ss": 4.0, "residual_df": 2, "total_ss": 14.0, "r_squared": 0.71, "r_squared_adj": 0.57, "fitted": [12.1, 14.3, ...], "residuals": [0.4, -0.3, ...], "curvature": null, "pure_error": null }
 ```
 
 #### `signal_to_noise(responses, goal) -> [f64]`
@@ -264,6 +264,8 @@ The result also carries `lenth: { pse, margin_of_error, df, distinct_contrasts }
 `max_order` goes up to the factor count (`4` on a 2^4 includes `A:B:C:D`); a higher order adds nothing, and `0` is an error.
 
 `doe_anova` returns per-run `fitted` and `residuals`, in run order, for residuals-versus-fitted and normal probability plots.
+
+`doe_anova` accepts **centre points** — runs with every factor at 0. They carry no information about the effects, which come from the factorial runs alone; what they measure is curvature. The result then carries `curvature: { sum_of_squares, df: 1, f_statistic, p_value }`, tested against `pure_error: { sum_of_squares, df }` — the spread among runs made at the same design point, centre replicates and repeated factorial runs alike. Both are `null` when the design gives nothing to compute them from. Axial and three-level designs still belong in `fit_rsm`.
 
 #### `fit_rsm(design, responses, factor_names) -> RsmModel`
 

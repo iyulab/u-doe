@@ -26,52 +26,106 @@ pub struct EffectRow {
     pub p_value: Option<f64>,
 }
 
+/// Curvature test from centre points (Montgomery, *Design and Analysis of
+/// Experiments*, §6.8).
+///
+/// Centre points sit at the middle of every factor range. If the response is
+/// linear in the factors, their mean equals the mean of the factorial runs;
+/// the difference, scaled, is a sum of squares with one degree of freedom.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CurvatureTest {
+    /// `n_F · n_C · (ȳ_F − ȳ_C)² / (n_F + n_C)`.
+    pub sum_of_squares: f64,
+    /// Always 1.
+    pub df: usize,
+    /// `sum_of_squares / MS_pure_error`. `None` without pure error to test
+    /// against: fewer than two runs at any design point, or replicates that
+    /// agree exactly.
+    pub f_statistic: Option<f64>,
+    /// p-value of `f_statistic` from F(1, df_pure_error).
+    pub p_value: Option<f64>,
+}
+
+/// Pure error: the spread among runs made at the same design point.
+///
+/// It is the one error estimate that does not depend on which terms the model
+/// includes. Every group of identical design rows contributes -- centre points
+/// and replicated factorial runs alike.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PureError {
+    /// Sum of squared deviations of each run from the mean of its group.
+    pub sum_of_squares: f64,
+    /// Sum over groups of (group size − 1).
+    pub df: usize,
+}
+
 /// Result of a DOE ANOVA.
 #[derive(Debug, Clone)]
 pub struct DoeAnovaResult {
     /// Rows for each requested effect.
     pub effects: Vec<EffectRow>,
-    /// Residual (error) sum of squares.
+    /// Residual (error) sum of squares: what neither the effects nor the
+    /// curvature term account for. It includes the pure error.
     pub residual_ss: f64,
     /// Residual degrees of freedom.
     pub residual_df: usize,
     /// Total sum of squares.
     pub total_ss: f64,
-    /// R² = SS_model / SS_total.
+    /// R² = (SS_model + SS_curvature) / SS_total.
     pub r_squared: f64,
     /// Adjusted R² = 1 - (SS_residual/df_residual) / (SS_total/df_total).
     pub r_squared_adj: f64,
-    /// Fitted value for each run, in run order: the grand mean plus half of
-    /// each requested effect times its contrast. Exact for the model because
-    /// the requested contrasts are orthogonal and balanced (see Errors).
+    /// Fitted value for each run, in run order. A factorial run's is the mean
+    /// of the factorial runs plus half of each requested effect times its
+    /// contrast -- exact because the requested contrasts are orthogonal and
+    /// balanced (see Errors). A centre run's is the mean of the centre runs.
     pub fitted: Vec<f64>,
     /// `responses[i] - fitted[i]` for each run. Their squares sum to
     /// [`residual_ss`](Self::residual_ss); they are what a residuals-versus-
     /// fitted or normal probability plot needs.
     pub residuals: Vec<f64>,
+    /// Curvature test, when the design has centre points (runs with every
+    /// factor at 0); `None` otherwise.
+    pub curvature: Option<CurvatureTest>,
+    /// Pure error, when some design point was run more than once; `None`
+    /// otherwise.
+    pub pure_error: Option<PureError>,
 }
 
 /// Compute DOE ANOVA for specified effects.
 ///
 /// # Arguments
-/// * `design`       — Experimental design matrix (coded ±1 values)
+/// * `design`       — Experimental design matrix: coded ±1 values, plus any
+///   centre points (runs with every factor at 0)
 /// * `responses`    — Observed response values, one per run
 /// * `effect_names` — Names of effects to include (e.g. `&["A", "B", "A:B"]`).
 ///   Interaction names join factor names with `":"`.
+///
+/// # Centre points
+///
+/// A centre point has a zero contrast for every term, so it says nothing about
+/// the effects: they and their sums of squares come from the factorial runs
+/// alone. What centre points do measure is curvature -- whether the response
+/// at the middle of the region lies on the plane through the corners -- and
+/// that is reported in [`DoeAnovaResult::curvature`], tested against the pure
+/// error. Counting centre points into the contrasts instead would shrink every
+/// effect by `n_F / (n_F + n_C)`.
 ///
 /// # Errors
 ///
 /// Returns `Err` if `responses.len() != design.run_count()`;
 /// [`DoeError::UnknownEffect`] if an entry in `effect_names` does not match
 /// any estimable effect (main effects and two-factor interactions);
-/// [`DoeError::NotTwoLevelCoded`] if the design carries a value other than
-/// `-1` or `+1`; [`DoeError::AliasedEffects`] if two requested effects share a
-/// contrast column, which would count the same sum of squares twice;
+/// [`DoeError::NotTwoLevelCoded`] if a run is neither two-level coded (every
+/// factor `-1` or `+1`) nor a centre point (every factor `0`) -- axial and
+/// three-level designs belong in [`crate::analysis::rsm::fit_rsm`];
+/// [`DoeError::AliasedEffects`] if two requested effects share a contrast
+/// column, which would count the same sum of squares twice;
 /// [`DoeError::PartiallyAliasedEffects`] if two requested contrasts are
 /// correlated without being identical, or one is correlated with the mean --
 /// the per-term sums of squares would then overlap and not add up to the model
-/// sum of squares; or [`DoeError::OverSpecifiedModel`] if the model asks for
-/// more terms than the design has degrees of freedom.
+/// sum of squares; or [`DoeError::OverSpecifiedModel`] if the model (counting
+/// the curvature term) asks for more degrees of freedom than the design has.
 ///
 /// # Examples
 ///
@@ -97,12 +151,36 @@ pub fn doe_anova(
         });
     }
 
-    // Estimate all effects up to order 2. This also rejects an empty design and
-    // one that is not two-level coded, before `total_df = n - 1` below could
-    // underflow on a zero-run design.
-    let all_effects = estimate_effects(design, responses, 2)?;
+    // Centre points -- runs with every factor at 0 -- are set aside; the
+    // effects come from the factorial runs.
+    let is_centre = |row: &[f64]| !row.is_empty() && row.iter().all(|v| v.abs() < 1e-9);
+    let (centre_runs, factorial_runs): (Vec<usize>, Vec<usize>) =
+        (0..n).partition(|&run| is_centre(&design.data[run]));
+    let factorial = DesignMatrix {
+        data: factorial_runs
+            .iter()
+            .map(|&run| design.data[run].clone())
+            .collect(),
+        factor_names: design.factor_names.clone(),
+    };
+    let factorial_y: Vec<f64> = factorial_runs.iter().map(|&run| responses[run]).collect();
+    let n_f = factorial_runs.len();
+    let n_c = centre_runs.len();
 
-    // Grand mean and total SS
+    // Estimate all effects up to order 2 from the factorial runs. This also
+    // rejects a design with no factorial runs and any run that is neither two-
+    // level coded nor a centre point -- reported in the caller's run numbering,
+    // before `total_df = n - 1` below could underflow.
+    let all_effects = estimate_effects(&factorial, &factorial_y, 2).map_err(|e| match e {
+        DoeError::NotTwoLevelCoded { run, factor, value } => DoeError::NotTwoLevelCoded {
+            run: factorial_runs[run],
+            factor,
+            value,
+        },
+        other => other,
+    })?;
+
+    // Grand mean and total SS, over every run
     let grand_mean = responses.iter().sum::<f64>() / n as f64;
     let total_ss: f64 = responses.iter().map(|&y| (y - grand_mean).powi(2)).sum();
     let total_df = n - 1;
@@ -130,8 +208,8 @@ pub fn doe_anova(
     let contrasts: Vec<Vec<f64>> = selected
         .iter()
         .map(|e| {
-            (0..n)
-                .map(|run| e.columns.iter().map(|&c| design.get(run, c)).product())
+            (0..n_f)
+                .map(|run| e.columns.iter().map(|&c| factorial.get(run, c)).product())
                 .collect()
         })
         .collect();
@@ -185,20 +263,33 @@ pub fn doe_anova(
         }
     }
 
+    // Curvature: the difference between the factorial and centre means,
+    // scaled to a one-degree-of-freedom sum of squares.
+    let mean_f = factorial_y.iter().sum::<f64>() / n_f as f64;
+    let (curvature_ss, mean_c) = if n_c > 0 {
+        let mean_c = centre_runs.iter().map(|&run| responses[run]).sum::<f64>() / n_c as f64;
+        let d = mean_f - mean_c;
+        ((n_f * n_c) as f64 * d * d / (n_f + n_c) as f64, mean_c)
+    } else {
+        (0.0, mean_f)
+    };
+    let curvature_df = usize::from(n_c > 0);
+
     let model_df = selected.len();
-    if model_df > total_df {
+    if model_df + curvature_df > total_df {
         return Err(DoeError::OverSpecifiedModel {
-            terms: model_df,
+            terms: model_df + curvature_df,
             runs: n,
         });
     }
 
     let model_ss: f64 = selected.iter().map(|e| e.sum_of_squares).sum();
-    // With the coding, aliasing and degrees-of-freedom guards above, the model
-    // sum of squares cannot exceed the total; what is left here is float noise,
-    // not a structural overflow being hidden.
-    let residual_ss = (total_ss - model_ss).max(0.0);
-    let residual_df = total_df - model_df;
+    // The total splits exactly into the effects (within the factorial runs),
+    // the curvature (between the factorial and centre means) and the rest.
+    // With the coding, aliasing, orthogonality and degrees-of-freedom guards
+    // above, what is clamped here is float noise, not a structural overflow.
+    let residual_ss = (total_ss - model_ss - curvature_ss).max(0.0);
+    let residual_df = total_df - model_df - curvature_df;
     let ms_residual = if residual_df > 0 {
         residual_ss / residual_df as f64
     } else {
@@ -230,8 +321,25 @@ pub fn doe_anova(
         })
         .collect();
 
+    let pure_error = pure_error(design, responses);
+    let curvature = (n_c > 0).then(|| {
+        let (f_statistic, p_value) = match pure_error {
+            Some(pe) if pe.sum_of_squares > 0.0 => {
+                let f = curvature_ss / (pe.sum_of_squares / pe.df as f64);
+                (Some(f), Some(f_pvalue(f, 1, pe.df)))
+            }
+            _ => (None, None),
+        };
+        CurvatureTest {
+            sum_of_squares: curvature_ss,
+            df: 1,
+            f_statistic,
+            p_value,
+        }
+    });
+
     let r_squared = if total_ss > 1e-12 {
-        model_ss / total_ss
+        (model_ss + curvature_ss) / total_ss
     } else {
         0.0
     };
@@ -242,17 +350,17 @@ pub fn doe_anova(
     };
 
     // With orthogonal, balanced contrasts the least-squares coefficient of each
-    // term is half its effect, so no matrix solve is needed.
-    let fitted: Vec<f64> = (0..n)
-        .map(|run| {
-            grand_mean
-                + selected
-                    .iter()
-                    .zip(contrasts.iter())
-                    .map(|(e, c)| e.estimate / 2.0 * c[run])
-                    .sum::<f64>()
-        })
-        .collect();
+    // term is half its effect, so no matrix solve is needed. Centre runs are
+    // fitted at their own mean -- that is what the curvature term fits.
+    let mut fitted = vec![mean_c; n];
+    for (i, &run) in factorial_runs.iter().enumerate() {
+        fitted[run] = mean_f
+            + selected
+                .iter()
+                .zip(contrasts.iter())
+                .map(|(e, c)| e.estimate / 2.0 * c[i])
+                .sum::<f64>();
+    }
     let residuals: Vec<f64> = responses
         .iter()
         .zip(fitted.iter())
@@ -268,9 +376,42 @@ pub fn doe_anova(
         r_squared_adj,
         fitted,
         residuals,
+        curvature,
+        pure_error,
     })
 }
 
+/// Pure error from every group of identical design rows; `None` when no design
+/// point was run more than once.
+fn pure_error(design: &DesignMatrix, responses: &[f64]) -> Option<PureError> {
+    let same_point = |a: &[f64], b: &[f64]| {
+        a.len() == b.len() && a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9)
+    };
+    let mut assigned = vec![false; design.run_count()];
+    let mut ss = 0.0;
+    let mut df = 0;
+    for run in 0..design.run_count() {
+        if assigned[run] {
+            continue;
+        }
+        let group: Vec<usize> = (run..design.run_count())
+            .filter(|&other| !assigned[other] && same_point(&design.data[run], &design.data[other]))
+            .collect();
+        for &member in &group {
+            assigned[member] = true;
+        }
+        let mean = group.iter().map(|&r| responses[r]).sum::<f64>() / group.len() as f64;
+        ss += group
+            .iter()
+            .map(|&r| (responses[r] - mean).powi(2))
+            .sum::<f64>();
+        df += group.len() - 1;
+    }
+    (df > 0).then_some(PureError {
+        sum_of_squares: ss,
+        df,
+    })
+}
 // ---------------------------------------------------------------------------
 // F-distribution p-value: P(F(df1, df2) > f)
 // Using regularized incomplete beta: p = I_x(df2/2, df1/2) where x = df2/(df2 + df1*f)
@@ -386,6 +527,130 @@ fn lgamma(x: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    /// 2^3 with centre points: the shape a template for adding centre points
+    /// produces. `y = 50 + 5A + 3B + C` on the factorial runs.
+    fn factorial_with_centres(centres: &[f64]) -> (DesignMatrix, Vec<f64>) {
+        let base = crate::design::factorial::full_factorial(3).expect("2^3");
+        let mut y: Vec<f64> = base
+            .data
+            .iter()
+            .map(|r| 50.0 + 5.0 * r[0] + 3.0 * r[1] + r[2])
+            .collect();
+        let mut data = base.data.clone();
+        for &c in centres {
+            data.push(vec![0.0; 3]);
+            y.push(c);
+        }
+        (
+            DesignMatrix {
+                data,
+                factor_names: base.factor_names,
+            },
+            y,
+        )
+    }
+
+    #[test]
+    fn centre_points_give_curvature_and_pure_error() {
+        // The centre mean is on the plane: no curvature, and three centre
+        // replicates give two degrees of pure error.
+        let (design, y) = factorial_with_centres(&[50.1, 49.9, 50.0]);
+        let r = doe_anova(&design, &y, &["A", "B", "C"]).expect("valid");
+        let c = r.curvature.expect("centre points give a curvature test");
+        assert!(c.sum_of_squares.abs() < 1e-9);
+        let pe = r.pure_error.expect("replicated centre points");
+        assert_eq!(pe.df, 2);
+        assert!((pe.sum_of_squares - 0.02).abs() < 1e-9);
+    }
+
+    #[test]
+    fn curvature_is_tested_against_pure_error() {
+        let (design, y) = factorial_with_centres(&[55.0, 55.2, 54.8]);
+        let r = doe_anova(&design, &y, &["A", "B", "C"]).expect("valid");
+        let c = r.curvature.expect("curvature");
+        let expected = 8.0 * 3.0 * 25.0 / 11.0;
+        assert!(
+            (c.sum_of_squares - expected).abs() < 1e-9,
+            "{}",
+            c.sum_of_squares
+        );
+        let pe = r.pure_error.expect("pure error");
+        assert!((pe.sum_of_squares - 0.08).abs() < 1e-9);
+        let f = c.f_statistic.expect("F");
+        assert!((f - expected / 0.04).abs() < 1e-6, "F = {f}");
+        // F(1, 2) is the square of a t with 2 degrees of freedom, whose tail has
+        // a closed form: P(F > f) = 1 - sqrt(f / (2 + f)).
+        let p = c.p_value.expect("p");
+        assert!((p - (1.0 - (f / (2.0 + f)).sqrt())).abs() < 1e-9, "p = {p}");
+        // Centre runs are fitted at their own mean.
+        for run in 8..11 {
+            assert!((r.fitted[run] - 55.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn the_sums_of_squares_add_up_with_centre_points() {
+        let (design, y) = factorial_with_centres(&[55.0, 55.2, 54.8]);
+        // Only A and B: C's sum of squares moves into the residual.
+        let r = doe_anova(&design, &y, &["A", "B"]).expect("valid");
+        let model: f64 = r.effects.iter().map(|e| e.sum_of_squares).sum();
+        let curvature = r.curvature.expect("curvature").sum_of_squares;
+        assert!((model + curvature + r.residual_ss - r.total_ss).abs() < 1e-9);
+        let ss: f64 = r.residuals.iter().map(|e| e * e).sum();
+        assert!((ss - r.residual_ss).abs() < 1e-9);
+        assert_eq!(r.residual_df, 11 - 1 - 2 - 1);
+    }
+
+    #[test]
+    fn a_run_that_is_neither_factorial_nor_centre_is_named_in_the_callers_numbering() {
+        let (mut design, y) = factorial_with_centres(&[50.0, 50.0]);
+        design.data[9] = vec![0.0, 1.0, 0.0];
+        match doe_anova(&design, &y, &["A"]) {
+            Err(DoeError::NotTwoLevelCoded { run, .. }) => assert_eq!(run, 9),
+            other => panic!("expected NotTwoLevelCoded at run 9, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn replicated_factorial_runs_give_pure_error_without_centre_points() {
+        let base = crate::design::factorial::full_factorial(2).expect("2^2");
+        let mut data = base.data.clone();
+        data.extend(base.data.clone());
+        let design = DesignMatrix {
+            data,
+            factor_names: base.factor_names,
+        };
+        let y = [10.0, 14.0, 12.0, 20.0, 11.0, 15.0, 12.5, 19.0];
+        let r = doe_anova(&design, &y, &["A", "B"]).expect("valid");
+        assert!(r.curvature.is_none());
+        let pe = r.pure_error.expect("replicates");
+        assert_eq!(pe.df, 4);
+        let expected = 0.5 + 0.5 + 0.125 + 0.5;
+        assert!(
+            (pe.sum_of_squares - expected).abs() < 1e-9,
+            "{}",
+            pe.sum_of_squares
+        );
+    }
+
+    #[test]
+    fn an_unreplicated_factorial_has_neither() {
+        let design = crate::design::factorial::full_factorial(3).expect("2^3");
+        let y = [10.0, 20.0, 15.0, 25.0, 12.0, 22.0, 18.0, 30.0];
+        let r = doe_anova(&design, &y, &["A", "B", "C"]).expect("valid");
+        assert!(r.curvature.is_none() && r.pure_error.is_none());
+    }
+    /// Counted into the contrasts, three centre points shrank every effect by
+    /// 8/11; refused, they left the design with no analysis at all.
+    #[test]
+    fn centre_points_are_accepted_and_leave_the_effects_alone() {
+        let (design, y) = factorial_with_centres(&[50.1, 49.9, 50.0]);
+        let r = doe_anova(&design, &y, &["A", "B", "C"]).expect("centre points are accepted");
+        let ss: Vec<f64> = r.effects.iter().map(|e| e.sum_of_squares).collect();
+        assert!((ss[0] - 200.0).abs() < 1e-9, "SS_A = {}", ss[0]);
+        assert!((ss[1] - 72.0).abs() < 1e-9, "SS_B = {}", ss[1]);
+        assert!((ss[2] - 8.0).abs() < 1e-9, "SS_C = {}", ss[2]);
+    }
     #[test]
     fn residuals_square_to_the_residual_sum_of_squares() {
         let design = crate::design::factorial::full_factorial(3).expect("2^3");

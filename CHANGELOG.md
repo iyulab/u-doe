@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns `lenth: { pse, margin_of_error, df, distinct_contrasts }` (or `null`
   with fewer than 3 distinct contrasts) -- the line a half-normal plot is read
   against.
+- `doe_anova` accepts centre points -- runs with every factor at 0. The effects
+  come from the factorial runs alone, and `DoeAnovaResult::curvature` reports
+  the curvature test the centre points exist for: a one-degree-of-freedom sum of
+  squares, `n_F · n_C · (ȳ_F − ȳ_C)² / (n_F + n_C)`, tested against the pure
+  error. 0.10.0 refused such designs, and `analysis::rsm::fit_rsm`, which its
+  error message pointed to, cannot fit them either: with only three levels the
+  pure quadratic columns coincide.
+- `DoeAnovaResult::pure_error`, from every group of identical design rows --
+  centre points and replicated factorial runs alike.
+- WebAssembly: `doe_anova` returns `curvature` and `pure_error` (or `null`).
 
 ### Changed
 
@@ -32,7 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only for orthogonal contrasts; a Plackett-Burman two-factor interaction is
   correlated with other main effects, so the table was not an ANOVA of the data
   and the residual could be clamped to zero without notice.
-- **Breaking:** `DoeAnovaResult` has two new public fields.
+- **Breaking:** `DoeAnovaResult` has four new public fields (`fitted`,
+  `residuals`, `curvature`, `pure_error`). With centre points, `r_squared`
+  counts the curvature term as part of the model.
+
+### Fixed
+
+- Several error messages contained runs of spaces in mid-sentence, left by line
+  continuations that had lost their backslash. `NotTwoLevelCoded` now also
+  tells a caller with centre points to use `doe_anova` rather than `fit_rsm`.
 
 ### Removed
 

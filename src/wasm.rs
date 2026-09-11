@@ -113,6 +113,22 @@ struct DoeAnovaResultDto {
     r_squared_adj: f64,
     fitted: Vec<f64>,
     residuals: Vec<f64>,
+    curvature: Option<CurvatureDto>,
+    pure_error: Option<PureErrorDto>,
+}
+
+#[derive(Serialize)]
+struct CurvatureDto {
+    sum_of_squares: f64,
+    df: usize,
+    f_statistic: Option<f64>,
+    p_value: Option<f64>,
+}
+
+#[derive(Serialize)]
+struct PureErrorDto {
+    sum_of_squares: f64,
+    df: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -213,8 +229,14 @@ pub fn definitive_screening(k: usize) -> Result<JsValue, JsValue> {
 /// `effect_names`: native array of effect names to include (e.g. `["A","B","A:B"]`).
 ///
 /// Returns an ANOVA result object with `effects`, `residual_ss`, `residual_df`,
-/// `total_ss`, `r_squared`, `r_squared_adj`, and per-run `fitted` and
-/// `residuals` (in run order) for residual plots.
+/// `total_ss`, `r_squared`, `r_squared_adj`, per-run `fitted` and `residuals`
+/// (in run order) for residual plots, `curvature` (`{ sum_of_squares, df,
+/// f_statistic, p_value }`, or `null` without centre points) and `pure_error`
+/// (`{ sum_of_squares, df }`, or `null` when no design point was repeated).
+///
+/// Centre points -- rows with every factor at 0 -- are accepted: the effects
+/// come from the factorial rows, and the centre points are tested for
+/// curvature against the pure error.
 ///
 /// # Errors
 /// Returns an error string if dimensions do not match or an argument has the
@@ -256,6 +278,16 @@ pub fn doe_anova(
         r_squared_adj: result.r_squared_adj,
         fitted: result.fitted,
         residuals: result.residuals,
+        curvature: result.curvature.map(|c| CurvatureDto {
+            sum_of_squares: c.sum_of_squares,
+            df: c.df,
+            f_statistic: c.f_statistic,
+            p_value: c.p_value,
+        }),
+        pure_error: result.pure_error.map(|p| PureErrorDto {
+            sum_of_squares: p.sum_of_squares,
+            df: p.df,
+        }),
     };
     to_js(&dto)
 }
