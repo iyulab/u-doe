@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- The dependency on `u-analytics`. It was declared, and kept current through
+  several version bumps, but nothing in the crate used it; it only added a
+  crate to every build and tied this crate's releases to that one's.
+
 ## [0.10.0] - 2026-09-10
 
 ### Changed
