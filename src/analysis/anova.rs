@@ -402,6 +402,7 @@ fn pure_error(design: &DesignMatrix, responses: &[f64]) -> Option<PureError> {
 // Using regularized incomplete beta: p = I_x(df2/2, df1/2) where x = df2/(df2 + df1*f)
 // ---------------------------------------------------------------------------
 
+/// Upper-tail p-value of `F(df1, df2)`.
 pub(crate) fn f_pvalue(f: f64, df1: usize, df2: usize) -> f64 {
     if f <= 0.0 {
         return 1.0;
@@ -409,105 +410,7 @@ pub(crate) fn f_pvalue(f: f64, df1: usize, df2: usize) -> f64 {
     let d1 = df1 as f64;
     let d2 = df2 as f64;
     let x = d2 / (d2 + d1 * f);
-    regularized_incomplete_beta(x, d2 / 2.0, d1 / 2.0)
-}
-
-/// Regularized incomplete beta function I_x(a, b).
-/// Uses continued fraction expansion (Lentz method).
-fn regularized_incomplete_beta(x: f64, a: f64, b: f64) -> f64 {
-    if x <= 0.0 {
-        return 0.0;
-    }
-    if x >= 1.0 {
-        return 1.0;
-    }
-
-    // Use symmetry relation when x > (a+1)/(a+b+2)
-    if x > (a + 1.0) / (a + b + 2.0) {
-        return 1.0 - regularized_incomplete_beta(1.0 - x, b, a);
-    }
-
-    // log B(a,b) = lgamma(a) + lgamma(b) - lgamma(a+b)
-    let log_beta = lgamma(a) + lgamma(b) - lgamma(a + b);
-    let front = (a * x.ln() + b * (1.0 - x).ln() - log_beta - a.ln()).exp();
-
-    front * continued_fraction_beta(x, a, b)
-}
-
-/// Modified Lentz continued fraction for incomplete beta.
-fn continued_fraction_beta(x: f64, a: f64, b: f64) -> f64 {
-    const MAX_ITER: usize = 200;
-    const EPS: f64 = 1e-12;
-    const FPMIN: f64 = 1e-300;
-
-    let mut c = 1.0_f64;
-    let mut d = 1.0 - (a + b) * x / (a + 1.0);
-    if d.abs() < FPMIN {
-        d = FPMIN;
-    }
-    d = 1.0 / d;
-    let mut h = d;
-
-    for m in 1..=MAX_ITER {
-        let mf = m as f64;
-        // Even step
-        let numerator = mf * (b - mf) * x / ((a + 2.0 * mf - 1.0) * (a + 2.0 * mf));
-        d = 1.0 + numerator * d;
-        if d.abs() < FPMIN {
-            d = FPMIN;
-        }
-        c = 1.0 + numerator / c;
-        if c.abs() < FPMIN {
-            c = FPMIN;
-        }
-        d = 1.0 / d;
-        h *= d * c;
-
-        // Odd step
-        let numerator2 = -(a + mf) * (a + b + mf) * x / ((a + 2.0 * mf) * (a + 2.0 * mf + 1.0));
-        d = 1.0 + numerator2 * d;
-        if d.abs() < FPMIN {
-            d = FPMIN;
-        }
-        c = 1.0 + numerator2 / c;
-        if c.abs() < FPMIN {
-            c = FPMIN;
-        }
-        d = 1.0 / d;
-        let delta = d * c;
-        h *= delta;
-
-        if (delta - 1.0).abs() < EPS {
-            break;
-        }
-    }
-
-    h
-}
-
-/// Lanczos approximation for ln(Γ(x)).
-fn lgamma(x: f64) -> f64 {
-    const G: f64 = 7.0;
-    const C: [f64; 9] = [
-        0.999_999_999_999_809_9,
-        676.520_368_121_885_1,
-        -1_259.139_216_722_402_8,
-        771.323_428_777_653_1,
-        -176.615_029_162_140_6,
-        12.507_343_278_686_905,
-        -0.138_571_095_265_720_12,
-        9.984_369_578_019_572e-6,
-        1.505_632_735_149_312e-7,
-    ];
-
-    let z = x - 1.0;
-    let mut s = C[0];
-    for (i, &c) in C[1..].iter().enumerate() {
-        s += c / (z + i as f64 + 1.0);
-    }
-    let t = z + G + 0.5;
-    let sqrt_2pi = (2.0 * std::f64::consts::PI).sqrt();
-    (sqrt_2pi * t.powf(z + 0.5) * (-t).exp() * s).ln()
+    u_numflow::special::regularized_incomplete_beta(x, d2 / 2.0, d1 / 2.0)
 }
 
 #[cfg(test)]
@@ -747,19 +650,6 @@ mod tests {
         );
         // Legacy separator-less interaction names are unknown (renamed in 0.5.0)
         assert!(doe_anova(&design, &responses, &["AB"]).is_err());
-    }
-
-    #[test]
-    fn lgamma_known_values() {
-        // lgamma(1) = 0, lgamma(2) = 0, lgamma(0.5) = ln(sqrt(pi))
-        assert!((lgamma(1.0)).abs() < 1e-9, "lgamma(1)={}", lgamma(1.0));
-        assert!((lgamma(2.0)).abs() < 1e-9, "lgamma(2)={}", lgamma(2.0));
-        let expected = (std::f64::consts::PI.sqrt()).ln();
-        assert!(
-            (lgamma(0.5) - expected).abs() < 1e-9,
-            "lgamma(0.5)={} expected={expected}",
-            lgamma(0.5)
-        );
     }
 
     #[test]
