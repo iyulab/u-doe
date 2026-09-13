@@ -402,7 +402,7 @@ fn pure_error(design: &DesignMatrix, responses: &[f64]) -> Option<PureError> {
 // Using regularized incomplete beta: p = I_x(df2/2, df1/2) where x = df2/(df2 + df1*f)
 // ---------------------------------------------------------------------------
 
-fn f_pvalue(f: f64, df1: usize, df2: usize) -> f64 {
+pub(crate) fn f_pvalue(f: f64, df1: usize, df2: usize) -> f64 {
     if f <= 0.0 {
         return 1.0;
     }

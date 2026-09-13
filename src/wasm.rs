@@ -118,6 +118,33 @@ struct DoeAnovaResultDto {
 }
 
 #[derive(Serialize)]
+struct LeastSquaresTermDto {
+    name: String,
+    coefficient: f64,
+    effect: f64,
+    std_error: f64,
+    t_statistic: f64,
+    sum_of_squares: f64,
+    df: usize,
+    mean_square: f64,
+    f_statistic: f64,
+    p_value: Option<f64>,
+}
+
+#[derive(Serialize)]
+struct LeastSquaresFitDto {
+    intercept: f64,
+    terms: Vec<LeastSquaresTermDto>,
+    residual_ss: f64,
+    residual_df: usize,
+    total_ss: f64,
+    r_squared: f64,
+    r_squared_adj: f64,
+    fitted: Vec<f64>,
+    residuals: Vec<f64>,
+}
+
+#[derive(Serialize)]
 struct CurvatureDto {
     sum_of_squares: f64,
     df: usize,
@@ -288,6 +315,70 @@ pub fn doe_anova(
             sum_of_squares: p.sum_of_squares,
             df: p.df,
         }),
+    };
+    to_js(&dto)
+}
+
+/// Fit two-level data by least squares and report Type III sums of squares.
+///
+/// Same arguments as [`doe_anova`], but the runs need not be balanced: a run
+/// may be left out and corners may be replicated unequally -- the inputs the
+/// contrast formula behind `doe_anova` and `estimate_effects` refuses.
+///
+/// Returns `{ intercept, terms, residual_ss, residual_df, total_ss, r_squared,
+/// r_squared_adj, fitted, residuals }`. Each term carries `name`,
+/// `coefficient`, `effect` (twice the coefficient), `std_error`,
+/// `t_statistic`, and a Type III `sum_of_squares` with `df`, `mean_square`,
+/// `f_statistic` and `p_value` (`null` with no residual degrees of freedom).
+/// On balanced data the effects and sums of squares equal `doe_anova`'s.
+///
+/// # Errors
+/// Returns an error string if dimensions do not match, an entry is not ±1
+/// (centre points belong in `doe_anova`, axial points in `fit_rsm`), the
+/// requested terms are aliased with each other or with the mean over the runs
+/// kept, or the terms and intercept outnumber the runs.
+#[wasm_bindgen]
+pub fn fit_least_squares(
+    design: JsValue,
+    responses: &[f64],
+    factor_names: JsValue,
+    effect_names: JsValue,
+) -> Result<JsValue, JsValue> {
+    let data: Vec<Vec<f64>> = from_js(design, "design")?;
+    let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
+    let effect_names: Vec<String> = from_js(effect_names, "effect_names")?;
+
+    let design = crate::design::DesignMatrix { data, factor_names };
+    let effect_refs: Vec<&str> = effect_names.iter().map(|s| s.as_str()).collect();
+
+    let fit = crate::analysis::least_squares::fit_least_squares(&design, responses, &effect_refs)
+        .map_err(js_err)?;
+
+    let dto = LeastSquaresFitDto {
+        intercept: fit.intercept,
+        terms: fit
+            .terms
+            .into_iter()
+            .map(|t| LeastSquaresTermDto {
+                name: t.name,
+                coefficient: t.coefficient,
+                effect: t.effect,
+                std_error: t.std_error,
+                t_statistic: t.t_statistic,
+                sum_of_squares: t.sum_of_squares,
+                df: t.df,
+                mean_square: t.mean_square,
+                f_statistic: t.f_statistic,
+                p_value: t.p_value,
+            })
+            .collect(),
+        residual_ss: fit.residual_ss,
+        residual_df: fit.residual_df,
+        total_ss: fit.total_ss,
+        r_squared: fit.r_squared,
+        r_squared_adj: fit.r_squared_adj,
+        fitted: fit.fitted,
+        residuals: fit.residuals,
     };
     to_js(&dto)
 }

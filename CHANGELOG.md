@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `analysis::least_squares::fit_least_squares` -- ordinary least squares on
+  two-level coded data with Type III (partial) sums of squares, for the runs
+  the contrast formula cannot analyse: a run left out, corners replicated
+  unequally, terms that are correlated. Each term reports its coefficient,
+  effect (twice the coefficient), standard error, t and F statistics and
+  p-value; the fit reports residual, R², fitted values and residuals. On
+  balanced data it returns the same values as `doe_anova` and
+  `estimate_effects`. Requested columns that coincide over the runs kept, or a
+  term constant over them, are refused as aliased with each other or with the
+  mean. Also exposed as the WASM function `fit_least_squares`.
+
 ## [0.11.0] - 2026-09-12
 
 ### Added

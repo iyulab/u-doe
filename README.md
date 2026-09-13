@@ -5,7 +5,7 @@ Design of Experiments (DOE) library for Rust — classical design generation, ef
 ## Features
 
 - **Design Generation**: Full factorial (2^k), fractional factorial (2^(k-p)), Plackett-Burman screening, Central Composite Design (CCD), Box-Behnken, Taguchi orthogonal arrays, Definitive Screening Design (DSD)
-- **Analysis**: Effect estimation (main effects + 2FI), half-normal plot data, DOE ANOVA with F-statistics and p-values, Taguchi S/N ratio analysis
+- **Analysis**: Effect estimation (main effects + 2FI), half-normal plot data, DOE ANOVA with F-statistics and p-values, least-squares fit with Type III sums of squares for unbalanced runs, Taguchi S/N ratio analysis
 - **Response Surface Methodology**: Second-order OLS model fitting, steepest ascent path
 - **Power & Sample Size**: Two-level factorial power, required replicates, power curves
 - **Multi-response Optimization**: Derringer-Suich desirability functions
@@ -233,6 +233,23 @@ Since 0.10.0 three further inputs are errors rather than misleading numbers:
 **Output:**
 ```json
 { "effects": [{ "name": "A", "sum_of_squares": 10.0, "df": 1, "mean_square": 10.0, "f_statistic": 5.0, "p_value": 0.03 }], "residual_ss": 4.0, "residual_df": 2, "total_ss": 14.0, "r_squared": 0.71, "r_squared_adj": 0.57, "fitted": [12.1, 14.3, ...], "residuals": [0.4, -0.3, ...], "curvature": null, "pure_error": null }
+```
+
+#### `fit_least_squares(design, responses, factor_names, effect_names) -> LeastSquaresFit`
+
+Fit the requested terms by ordinary least squares and report **Type III (partial) sums of squares**. Same arguments as `doe_anova`, but the runs need not be balanced: a run may be left out and corners may be replicated unequally — exactly the inputs `doe_anova` and `estimate_effects` refuse, because their contrast formula is only exact on balanced, orthogonal data. Terms of any order are accepted (`"A:B:C"`).
+
+Each term's `sum_of_squares` is the increase in the residual sum of squares when that term alone is dropped from the model. On balanced data it equals `doe_anova`'s, and `effect` (twice the `coefficient`) equals `estimate_effects`'s estimate; on unbalanced data the partial sums of squares of correlated terms do not add up to the model sum of squares — that is what makes them Type III.
+
+Errors: a value other than `-1`/`+1` (centre points belong in `doe_anova`, which tests them for curvature; axial points in `fit_rsm`); requested terms whose columns coincide over the runs kept, or a term that is constant over them (aliased with the mean); more terms plus intercept than runs.
+
+**Output:**
+```json
+{ "intercept": 51.2,
+  "terms": [{ "name": "A", "coefficient": 5.1, "effect": 10.2, "std_error": 0.14, "t_statistic": 36.4,
+              "sum_of_squares": 398.1, "df": 1, "mean_square": 398.1, "f_statistic": 1325.0, "p_value": 0.0 }],
+  "residual_ss": 3.0, "residual_df": 10, "total_ss": 1210.4, "r_squared": 0.997, "r_squared_adj": 0.996,
+  "fitted": [40.9, 51.1, ...], "residuals": [0.2, -0.1, ...] }
 ```
 
 #### `signal_to_noise(responses, goal) -> [f64]`

@@ -12,6 +12,7 @@
 use proptest::prelude::*;
 use u_doe::analysis::anova::doe_anova;
 use u_doe::analysis::effects::estimate_effects;
+use u_doe::analysis::least_squares::fit_least_squares;
 use u_doe::design::factorial::{fractional_factorial, full_factorial};
 use u_doe::design::plackett_burman::plackett_burman;
 use u_doe::design::DesignMatrix;
@@ -182,5 +183,62 @@ proptest! {
             let dot: f64 = column(&design, j).iter().zip(&result.residuals).map(|(x, r)| x * r).sum();
             prop_assert!(dot.abs() < 1e-6, "residuals are not orthogonal to factor {j}");
         }
+    }
+
+    /// On a balanced full factorial the least-squares fit is `doe_anova`:
+    /// same sums of squares, residual, R² and fitted values, and each effect
+    /// is the contrast effect. With one run dropped -- which `doe_anova`
+    /// refuses -- every Type III sum of squares equals the residual increase
+    /// from refitting without that term.
+    #[test]
+    fn least_squares_agrees_with_the_contrast_formula_when_balanced_and_is_partial_otherwise(
+        (k, responses, dropped) in (2..=4usize)
+            .prop_flat_map(|k| (Just(k), responses_for(1 << k), 0..(1usize << k))),
+    ) {
+        let design = full_factorial(k).unwrap();
+        let names: Vec<&str> = design.factor_names.iter().map(String::as_str).collect();
+        let fit = fit_least_squares(&design, &responses, &names).unwrap();
+        let anova = doe_anova(&design, &responses, &names).unwrap();
+        let effects = estimate_effects(&design, &responses, 1).unwrap();
+        let tol = |x: f64| 1e-6 * (1.0 + x.abs());
+
+        for (t, e) in fit.terms.iter().zip(&anova.effects) {
+            prop_assert_eq!(&t.name, &e.name);
+            prop_assert!((t.sum_of_squares - e.sum_of_squares).abs() < tol(e.sum_of_squares), "{}", t.name);
+        }
+        for (t, e) in fit.terms.iter().zip(&effects) {
+            prop_assert!((t.effect - e.estimate).abs() < tol(e.estimate), "{} effect", t.name);
+        }
+        prop_assert!((fit.residual_ss - anova.residual_ss).abs() < tol(anova.residual_ss));
+        prop_assert_eq!(fit.residual_df, anova.residual_df);
+        prop_assert!((fit.r_squared - anova.r_squared).abs() < 1e-6);
+        for (a, b) in fit.fitted.iter().zip(&anova.fitted) {
+            prop_assert!((a - b).abs() < tol(*b));
+        }
+
+        let mut unbalanced = design.clone();
+        unbalanced.data.remove(dropped);
+        let mut y = responses.clone();
+        y.remove(dropped);
+        prop_assert!(doe_anova(&unbalanced, &y, &names).is_err());
+        let fit = fit_least_squares(&unbalanced, &y, &names).unwrap();
+        prop_assert_eq!(fit.residual_df, unbalanced.run_count() - 1 - k);
+        for (idx, name) in names.iter().enumerate() {
+            let reduced: Vec<&str> = names.iter().copied().filter(|n| n != name).collect();
+            let without = fit_least_squares(&unbalanced, &y, &reduced).unwrap();
+            let expected = without.residual_ss - fit.residual_ss;
+            prop_assert!(
+                (fit.terms[idx].sum_of_squares - expected).abs() < tol(expected),
+                "{name}: Type III {} vs refit {expected}", fit.terms[idx].sum_of_squares
+            );
+            if fit.residual_df > 0 && fit.terms[idx].f_statistic.is_finite() {
+                prop_assert!(
+                    (fit.terms[idx].t_statistic.powi(2) - fit.terms[idx].f_statistic).abs()
+                        < tol(fit.terms[idx].f_statistic)
+                );
+            }
+        }
+        let ss_fitted: f64 = fit.residuals.iter().map(|r| r * r).sum();
+        prop_assert!((ss_fitted - fit.residual_ss).abs() < tol(fit.residual_ss));
     }
 }
