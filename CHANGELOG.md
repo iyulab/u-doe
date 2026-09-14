@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-09-15
+
+### Fixed
+
+- Power and sample-size calculations use `u-numflow` 0.6's normal quantile and
+  CDF: the quantile was accurate only to 4.5e-4 (Abramowitz & Stegun 26.2.23)
+  and is now exact to double precision (Wichura AS 241), so computed power
+  changes in its trailing digits.
+
 ## [0.12.0] - 2026-09-13
 
 ### Added
