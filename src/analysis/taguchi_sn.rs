@@ -45,11 +45,11 @@ pub enum SnGoal {
 /// A `Vec<f64>` of SN values in dB, one per run, in the same order as `responses`.
 ///
 /// # Errors
-/// * [`DoeError::InvalidSpecification`] if:
-///   - `responses` is empty.
-///   - Any run has zero replicates.
-///   - `goal` is `LargerIsBetter` and any measurement is ≤ 0.
-///   - `goal` is `NominalIsBest` and any run has fewer than 2 replicates.
+/// * [`DoeError::EmptyResponses`] if `responses` is empty.
+/// * [`DoeError::TooFewReplicates`] if any run has zero replicates, or `goal` is
+///   `NominalIsBest` and any run has fewer than 2 replicates.
+/// * [`DoeError::NonPositiveResponse`] if `goal` is `LargerIsBetter` and any
+///   measurement is ≤ 0.
 ///
 /// # Examples
 ///
