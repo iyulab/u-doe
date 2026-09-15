@@ -78,11 +78,11 @@ fn desirability_pipeline() {
     let y1 = vec![45.0, 71.0, 48.0, 65.0, 68.0, 60.0, 80.0, 65.0];
     let y2 = [10.0, 8.0, 12.0, 6.0, 9.0, 7.0, 11.0, 5.0];
 
-    let spec1 = ResponseSpec::maximize(40.0, 85.0, 85.0, 1.0);
-    let spec2 = ResponseSpec::minimize(3.0, 3.0, 15.0, 1.0);
+    let spec1 = ResponseSpec::maximize(40.0, 85.0, 85.0, 1.0).unwrap();
+    let spec2 = ResponseSpec::minimize(3.0, 3.0, 15.0, 1.0).unwrap();
 
     for i in 0..8 {
-        let d = overall_desirability(&[spec1.clone(), spec2.clone()], &[y1[i], y2[i]]);
+        let d = overall_desirability(&[spec1.clone(), spec2.clone()], &[y1[i], y2[i]]).unwrap();
         assert!((0.0..=1.0).contains(&d), "run {i}: d={d}");
     }
 

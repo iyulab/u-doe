@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `UnknownEffect { effect }`. `DoeError::code()` returns the same `code` the
   WASM error carries.
 - **Breaking:** `analysis::rsm::steepest_ascent` returns a `Result`.
+- **Breaking:** `ResponseSpec` can only be built valid. Its fields are private
+  (read them with `goal()`, `lower()`, `target_value()`, `upper()`, `s1()`,
+  `s2()`, `importance()`); `ResponseSpec::new`, `maximize`, `minimize`,
+  `target` and `with_importance` return a `Result`, and
+  `overall_desirability` returns `Result<f64, DoeError>`.
 - **Breaking:** WASM results carry `null` for an absent value (`curvature`,
   `pure_error`, `lenth`, `p_value`), as documented, instead of `undefined`.
   Test with `== null`.
@@ -36,6 +41,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DesignMatrix::check_shape()`.
 
 ### Fixed
+
+- `desirability` accepted a specification whose ramp has no width or runs
+  backwards and scored it anyway: `Maximize` with `target <= lower` gave a
+  step at `lower` or a constant 1, `Target` with its limits reversed gave 0
+  everywhere -- scores that look valid and rank every candidate the same. The
+  limits a goal uses must now be finite with `lower < target` (Maximize),
+  `target < upper` (Minimize) or `lower < target < upper` (Target), the
+  exponents it uses finite and positive, and `importance` finite and not
+  negative; otherwise `InvalidDesirabilityLimits` or
+  `InvalidDesirabilityParameter` (WASM: `invalid_desirability_limits` /
+  `invalid_desirability_parameter` with the spec's `index`).
+- `overall_desirability` returned 0.0 for no specifications, a response count
+  that did not match, or weights summing to zero -- indistinguishable from a
+  design with a response out of range. These are now `EmptyResponses`,
+  `ResponseCountMismatch` and `NoWeightedResponse`.
 
 - A run whose length differs from the number of factor names is refused
   (`DesignShapeMismatch`). It used to index past the row -- a panic, which a

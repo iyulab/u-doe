@@ -95,9 +95,59 @@ pub enum DoeError {
     },
     /// A response that must be strictly positive is not.
     NonPositiveResponse { run: usize, value: f64 },
+    /// A desirability specification whose ramp has no width or runs
+    /// backwards: the limits `goal` uses are not finite, or not ordered
+    /// `lower < target` (rising) and `target < upper` (falling). `index` is the
+    /// position of the specification in its list, when there is one.
+    InvalidDesirabilityLimits {
+        index: Option<usize>,
+        goal: crate::optimization::desirability::GoalType,
+        lower: f64,
+        target: f64,
+        upper: f64,
+    },
+    /// A desirability exponent (`s1`, `s2`) that is not finite and positive, or
+    /// an `importance` weight that is not finite and non-negative.
+    InvalidDesirabilityParameter {
+        index: Option<usize>,
+        parameter: &'static str,
+        value: f64,
+    },
+    /// Every desirability specification has importance 0, so there is nothing
+    /// to combine.
+    NoWeightedResponse,
 }
 
 impl DoeError {
+    /// The same error, placed at position `index` of the input list it came
+    /// from. Only errors about one element of a list carry an index; others
+    /// are returned unchanged.
+    pub fn at_index(self, index: usize) -> Self {
+        match self {
+            DoeError::InvalidDesirabilityLimits {
+                goal,
+                lower,
+                target,
+                upper,
+                ..
+            } => DoeError::InvalidDesirabilityLimits {
+                index: Some(index),
+                goal,
+                lower,
+                target,
+                upper,
+            },
+            DoeError::InvalidDesirabilityParameter {
+                parameter, value, ..
+            } => DoeError::InvalidDesirabilityParameter {
+                index: Some(index),
+                parameter,
+                value,
+            },
+            other => other,
+        }
+    }
+
     /// Stable, machine-readable reason: the variant name in `snake_case`.
     ///
     /// ```
@@ -126,6 +176,9 @@ impl DoeError {
             DoeError::EmptyResponses => "empty_responses",
             DoeError::TooFewReplicates { .. } => "too_few_replicates",
             DoeError::NonPositiveResponse { .. } => "non_positive_response",
+            DoeError::InvalidDesirabilityLimits { .. } => "invalid_desirability_limits",
+            DoeError::InvalidDesirabilityParameter { .. } => "invalid_desirability_parameter",
+            DoeError::NoWeightedResponse => "no_weighted_response",
         }
     }
 }
@@ -175,7 +228,7 @@ impl std::fmt::Display for DoeError {
                 "run {run} has {got} entries but the design names {expected} factors"
             ),
             DoeError::ResponseCountMismatch { expected, got } => {
-                write!(f, "expected one response per run ({expected}), got {got}")
+                write!(f, "got {got} responses where {expected} were expected")
             }
             DoeError::UnknownEffect { effect } => write!(
                 f,
@@ -255,6 +308,46 @@ impl std::fmt::Display for DoeError {
             DoeError::NonPositiveResponse { run, value } => write!(
                 f,
                 "run {run}: responses must be greater than 0, got {value}"
+            ),
+            DoeError::InvalidDesirabilityLimits {
+                index,
+                goal,
+                lower,
+                target,
+                upper,
+            } => {
+                if let Some(i) = index {
+                    write!(f, "specs[{i}]: ")?;
+                }
+                let order = match goal {
+                    crate::optimization::desirability::GoalType::Maximize => "lower < target",
+                    crate::optimization::desirability::GoalType::Minimize => "target < upper",
+                    crate::optimization::desirability::GoalType::Target => "lower < target < upper",
+                };
+                write!(
+                    f,
+                    "{goal:?} needs finite limits with {order}, got lower {lower}, target \
+                     {target}, upper {upper}: the ramp has no width or runs backwards"
+                )
+            }
+            DoeError::InvalidDesirabilityParameter {
+                index,
+                parameter,
+                value,
+            } => {
+                if let Some(i) = index {
+                    write!(f, "specs[{i}]: ")?;
+                }
+                let domain = if *parameter == "importance" {
+                    "finite and not negative"
+                } else {
+                    "finite and greater than 0"
+                };
+                write!(f, "{parameter} must be {domain}, got {value}")
+            }
+            DoeError::NoWeightedResponse => write!(
+                f,
+                "every response has importance 0, so there is nothing to combine"
             ),
         }
     }
@@ -355,6 +448,19 @@ mod tests {
                 run: 2,
                 value: -1.0,
             },
+            DoeError::InvalidDesirabilityLimits {
+                index: Some(1),
+                goal: crate::optimization::desirability::GoalType::Target,
+                lower: 10.0,
+                target: 5.0,
+                upper: 0.0,
+            },
+            DoeError::InvalidDesirabilityParameter {
+                index: None,
+                parameter: "importance",
+                value: -1.0,
+            },
+            DoeError::NoWeightedResponse,
         ]
     }
 

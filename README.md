@@ -57,10 +57,10 @@ let responses = vec![/* measured values */];
 use u_doe::optimization::desirability::{ResponseSpec, overall_desirability};
 
 let specs = vec![
-    ResponseSpec::maximize(50.0, 100.0, 100.0, 1.0),
-    ResponseSpec::minimize(0.0, 0.0, 30.0, 1.0),
+    ResponseSpec::maximize(50.0, 100.0, 100.0, 1.0).unwrap(),
+    ResponseSpec::minimize(0.0, 0.0, 30.0, 1.0).unwrap(),
 ];
-let d = overall_desirability(&specs, &[80.0, 10.0]);
+let d = overall_desirability(&specs, &[80.0, 10.0]).unwrap();
 println!("Overall desirability: {d:.3}");
 ```
 
@@ -184,7 +184,10 @@ try {
 | `coefficient_count_mismatch` | `factors`, `expected`, `got` | `steepest_ascent` coefficients not of a quadratic model in that many factors |
 | `too_few_replicates` | `run`, `needed`, `got` | `signal_to_noise`: a run with too few measurements for the goal |
 | `non_positive_response` | `run`, `value` | `signal_to_noise` `LargerIsBetter`: a response ≤ 0 |
-| `empty_responses` | — | `signal_to_noise` with no runs |
+| `empty_responses` | — | `signal_to_noise` with no runs, `desirability` with no specs |
+| `invalid_desirability_limits` | `index`, `goal`, `lower`, `target`, `upper` | A spec whose ramp has no width or runs backwards (see `desirability`) |
+| `invalid_desirability_parameter` | `index`, `parameter`, `value` | `s1`/`s2` not positive, or `importance` negative |
+| `no_weighted_response` | — | Every spec has `importance` 0 |
 
 A field that has no value is `null` in results too (`curvature`, `pure_error`,
 `lenth`, `p_value`), never a missing key.

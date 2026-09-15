@@ -831,27 +831,29 @@ struct DesirabilityResultDto {
 /// importance-weighted geometric mean (∏ dᵢ^rᵢ)^(1/Σrᵢ).
 ///
 /// # Errors
-/// Throws an `Error` carrying `code` if `specs` has the wrong shape (native JS values,
-/// not JSON strings), specs/responses length mismatch, or goal string is
-/// unrecognised.
+/// Throws an `Error` carrying `code`: `malformed_input` if `specs` has the
+/// wrong shape (native JS values, not JSON strings); `unknown_option` for an
+/// unrecognised goal; `invalid_desirability_limits` (with `index`, `goal`,
+/// `lower`, `target`, `upper`) if a spec's limits are not finite and ordered
+/// `lower < target` (Maximize), `target < upper` (Minimize) or
+/// `lower < target < upper` (Target); `invalid_desirability_parameter` (with
+/// `index`, `parameter`, `value`) if `s1` -- or `s2` for Target -- is not
+/// positive, or `importance` is negative; `response_count_mismatch`,
+/// `empty_responses` or `no_weighted_response` for the lists as a whole.
 #[wasm_bindgen]
 pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValue> {
+    use crate::optimization::desirability::{overall_desirability, GoalType, ResponseSpec};
+
     let inputs: Vec<ResponseSpecInput> = from_js(specs, "specs")?;
 
-    if inputs.len() != responses.len() {
-        return Err(js_err(DoeError::ResponseCountMismatch {
-            expected: inputs.len(),
-            got: responses.len(),
-        }));
-    }
-
-    let specs: Vec<crate::optimization::desirability::ResponseSpec> = inputs
+    let specs: Vec<ResponseSpec> = inputs
         .into_iter()
-        .map(|input| {
+        .enumerate()
+        .map(|(index, input)| {
             let goal = match input.goal.as_str() {
-                "Maximize" => crate::optimization::desirability::GoalType::Maximize,
-                "Minimize" => crate::optimization::desirability::GoalType::Minimize,
-                "Target" => crate::optimization::desirability::GoalType::Target,
+                "Maximize" => GoalType::Maximize,
+                "Minimize" => GoalType::Minimize,
+                "Target" => GoalType::Target,
                 other => {
                     return Err(js_err(WireError::unknown_option(
                         "goal",
@@ -860,25 +862,27 @@ pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValu
                     )))
                 }
             };
-            Ok(crate::optimization::desirability::ResponseSpec {
+            ResponseSpec::new(
                 goal,
-                lower: input.lower,
-                target: input.target,
-                upper: input.upper,
-                s1: input.s1,
-                s2: input.s2,
-                importance: input.importance,
-            })
+                input.lower,
+                input.target,
+                input.upper,
+                input.s1,
+                input.s2,
+            )
+            .and_then(|spec| spec.with_importance(input.importance))
+            .map_err(|e| js_err(e.at_index(index)))
         })
-        .collect::<Result<Vec<_>, JsValue>>()?;
+        .collect::<Result<_, JsValue>>()?;
 
+    // Checks the list as a whole -- empty, one response per spec, some weight
+    // -- before any individual value is computed.
+    let overall = overall_desirability(&specs, responses).map_err(js_err)?;
     let individual: Vec<f64> = specs
         .iter()
         .zip(responses.iter())
         .map(|(spec, &y)| spec.desirability(y))
         .collect();
-
-    let overall = crate::optimization::desirability::overall_desirability(&specs, responses);
 
     let dto = DesirabilityResultDto {
         individual,
