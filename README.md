@@ -341,6 +341,8 @@ The result also carries `lenth: { pse, margin_of_error, df, distinct_contrasts }
 
 `doe_anova` returns per-run `fitted` and `residuals`, in run order, for residuals-versus-fitted and normal probability plots.
 
+In `doe_anova` rows, `f_statistic` and `p_value` are `null` when there is no residual mean square to test against — a saturated model (no residual degrees of freedom) or a residual of exactly zero. The same holds for `fit_least_squares` terms, whose `std_error` is also `null` without residual degrees of freedom.
+
 `doe_anova` accepts **centre points** — runs with every factor at 0. They carry no information about the effects, which come from the factorial runs alone; what they measure is curvature. The result then carries `curvature: { sum_of_squares, df: 1, f_statistic, p_value }`, tested against `pure_error: { sum_of_squares, df }` — the spread among runs made at the same design point, centre replicates and repeated factorial runs alike. Both are `null` when the design gives nothing to compute them from. Axial and three-level designs still belong in `fit_rsm`.
 
 #### `fit_rsm(design, responses, factor_names) -> RsmModel`

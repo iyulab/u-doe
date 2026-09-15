@@ -231,11 +231,8 @@ proptest! {
                 (fit.terms[idx].sum_of_squares - expected).abs() < tol(expected),
                 "{name}: Type III {} vs refit {expected}", fit.terms[idx].sum_of_squares
             );
-            if fit.residual_df > 0 && fit.terms[idx].f_statistic.is_finite() {
-                prop_assert!(
-                    (fit.terms[idx].t_statistic.powi(2) - fit.terms[idx].f_statistic).abs()
-                        < tol(fit.terms[idx].f_statistic)
-                );
+            if let (Some(t), Some(f)) = (fit.terms[idx].t_statistic, fit.terms[idx].f_statistic) {
+                prop_assert!((t.powi(2) - f).abs() < tol(f));
             }
         }
         let ss_fitted: f64 = fit.residuals.iter().map(|r| r * r).sum();

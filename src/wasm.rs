@@ -171,7 +171,7 @@ struct EffectRowDto {
     sum_of_squares: f64,
     df: usize,
     mean_square: f64,
-    f_statistic: f64,
+    f_statistic: Option<f64>,
     p_value: Option<f64>,
 }
 
@@ -194,12 +194,12 @@ struct LeastSquaresTermDto {
     name: String,
     coefficient: f64,
     effect: f64,
-    std_error: f64,
-    t_statistic: f64,
+    std_error: Option<f64>,
+    t_statistic: Option<f64>,
     sum_of_squares: f64,
     df: usize,
     mean_square: f64,
-    f_statistic: f64,
+    f_statistic: Option<f64>,
     p_value: Option<f64>,
 }
 
@@ -402,7 +402,9 @@ pub fn doe_anova(
 /// r_squared_adj, fitted, residuals }`. Each term carries `name`,
 /// `coefficient`, `effect` (twice the coefficient), `std_error`,
 /// `t_statistic`, and a Type III `sum_of_squares` with `df`, `mean_square`,
-/// `f_statistic` and `p_value` (`null` with no residual degrees of freedom).
+/// `f_statistic` and `p_value`. `std_error`, `t_statistic`, `f_statistic` and
+/// `p_value` are `null` with no residual degrees of freedom; `t_statistic`,
+/// `f_statistic` and `p_value` are also `null` when the residual is exactly 0.
 /// On balanced data the effects and sums of squares equal `doe_anova`'s.
 ///
 /// # Errors

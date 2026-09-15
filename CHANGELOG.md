@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `s2()`, `importance()`); `ResponseSpec::new`, `maximize`, `minimize`,
   `target` and `with_importance` return a `Result`, and
   `overall_desirability` returns `Result<f64, DoeError>`.
+- **Breaking:** `EffectRow::f_statistic` and `LeastSquaresTerm`'s
+  `f_statistic`, `std_error` and `t_statistic` are `Option<f64>`, `None`
+  where they used to be `NaN`: with no residual degrees of freedom, or (for
+  the F and t statistics) a residual of exactly zero -- the same convention
+  `CurvatureTest::f_statistic` and every `p_value` already followed. Over WASM
+  they are `null` instead of `NaN`.
 - **Breaking:** WASM results carry `null` for an absent value (`curvature`,
   `pure_error`, `lenth`, `p_value`), as documented, instead of `undefined`.
   Test with `== null`.

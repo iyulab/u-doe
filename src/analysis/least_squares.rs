@@ -32,10 +32,11 @@ pub struct LeastSquaresTerm {
     pub coefficient: f64,
     /// Effect on the ±1 scale: twice the coefficient.
     pub effect: f64,
-    /// Standard error of the coefficient, `sqrt(MS_residual · c_jj)`.
-    pub std_error: f64,
-    /// `coefficient / std_error`.
-    pub t_statistic: f64,
+    /// Standard error of the coefficient, `sqrt(MS_residual · c_jj)`. `None`
+    /// with no residual degrees of freedom.
+    pub std_error: Option<f64>,
+    /// `coefficient / std_error`. `None` when `std_error` is `None` or 0.
+    pub t_statistic: Option<f64>,
     /// Type III (partial) sum of squares: the residual sum of squares of the
     /// model without this term, minus that of the full model.
     pub sum_of_squares: f64,
@@ -43,10 +44,10 @@ pub struct LeastSquaresTerm {
     pub df: usize,
     /// `sum_of_squares / df`.
     pub mean_square: f64,
-    /// `mean_square / MS_residual`; equals `t_statistic²`.
-    pub f_statistic: f64,
-    /// p-value of the F test; `None` when there are no residual degrees of
-    /// freedom.
+    /// `mean_square / MS_residual`; equals `t_statistic²`. `None` with no
+    /// residual degrees of freedom or a residual of exactly zero.
+    pub f_statistic: Option<f64>,
+    /// p-value of the F test; `None` whenever `f_statistic` is.
     pub p_value: Option<f64>,
 }
 
@@ -207,11 +208,7 @@ pub fn fit_least_squares(
     let residual_df = n - p;
     let grand_mean = responses.iter().sum::<f64>() / n as f64;
     let total_ss: f64 = responses.iter().map(|&y| (y - grand_mean).powi(2)).sum();
-    let ms_residual = if residual_df > 0 {
-        residual_ss / residual_df as f64
-    } else {
-        f64::NAN
-    };
+    let ms_residual = (residual_df > 0).then(|| residual_ss / residual_df as f64);
 
     // Type III sum of squares of a single-column term: dropping column j from
     // the model raises the residual sum of squares by b_j² / c_jj, where c_jj
@@ -224,14 +221,10 @@ pub fn fit_least_squares(
             let b = beta[j];
             let c = xtx_inv.get(j, j);
             let ss = b * b / c;
-            let std_error = (ms_residual * c).sqrt();
-            let t = b / std_error;
-            let f = if ms_residual > 0.0 && ms_residual.is_finite() {
-                ss / ms_residual
-            } else {
-                f64::NAN
-            };
-            let p_value = (f.is_finite() && residual_df > 0).then(|| f_pvalue(f, 1, residual_df));
+            let std_error = ms_residual.map(|ms| (ms * c).sqrt());
+            let t = std_error.filter(|&se| se > 0.0).map(|se| b / se);
+            let f = ms_residual.filter(|&ms| ms > 0.0).map(|ms| ss / ms);
+            let p_value = f.map(|f| f_pvalue(f, 1, residual_df));
             LeastSquaresTerm {
                 name: name.to_string(),
                 coefficient: b,
@@ -391,7 +384,7 @@ mod tests {
                 t.sum_of_squares,
                 e.sum_of_squares
             );
-            assert!(close(t.f_statistic, e.f_statistic));
+            assert!(close(t.f_statistic.unwrap(), e.f_statistic.unwrap()));
             assert!(close(t.p_value.unwrap(), e.p_value.unwrap()));
         }
         assert!(close(fit.residual_ss, anova.residual_ss));
@@ -467,7 +460,8 @@ mod tests {
         );
         // t² = F.
         for t in &fit.terms {
-            assert!(close(t.t_statistic * t.t_statistic, t.f_statistic));
+            let (t_stat, f) = (t.t_statistic.unwrap(), t.f_statistic.unwrap());
+            assert!(close(t_stat * t_stat, f));
         }
     }
 
@@ -549,7 +543,10 @@ mod tests {
         assert_eq!(fit.residual_df, 0);
         assert!(fit.residual_ss.abs() < 1e-9);
         assert!(fit.terms.iter().all(|t| t.p_value.is_none()));
-        assert!(fit.terms.iter().all(|t| t.f_statistic.is_nan()));
+        assert!(fit
+            .terms
+            .iter()
+            .all(|t| t.f_statistic.is_none() && t.std_error.is_none() && t.t_statistic.is_none()));
         assert!(close(fit.r_squared, 1.0));
     }
 }

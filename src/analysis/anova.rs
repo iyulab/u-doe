@@ -19,10 +19,12 @@ pub struct EffectRow {
     pub df: usize,
     /// Mean square = SS / df.
     pub mean_square: f64,
-    /// F-statistic = MS_effect / MS_residual.
-    pub f_statistic: f64,
-    /// p-value from F(1, df_residual) distribution.
-    /// `None` if residual degrees of freedom is 0 (saturated model).
+    /// F-statistic = MS_effect / MS_residual. `None` when there is no residual
+    /// mean square to test against: no residual degrees of freedom (a
+    /// saturated model), or a residual of exactly zero.
+    pub f_statistic: Option<f64>,
+    /// p-value from F(1, df_residual) distribution; `None` whenever
+    /// `f_statistic` is.
     pub p_value: Option<f64>,
 }
 
@@ -278,26 +280,18 @@ pub fn doe_anova(
     // above, what is clamped here is float noise, not a structural overflow.
     let residual_ss = (total_ss - model_ss - curvature_ss).max(0.0);
     let residual_df = total_df - model_df - curvature_df;
-    let ms_residual = if residual_df > 0 {
-        residual_ss / residual_df as f64
-    } else {
-        f64::NAN
-    };
+    // No residual degrees of freedom, or nothing left over: no error estimate
+    // to test the effects against.
+    let ms_residual = (residual_df > 0)
+        .then(|| residual_ss / residual_df as f64)
+        .filter(|&ms| ms > 0.0);
 
     let effects: Vec<EffectRow> = selected
         .iter()
         .map(|e| {
             let ms = e.sum_of_squares; // df = 1
-            let f_stat = if ms_residual > 0.0 && ms_residual.is_finite() {
-                ms / ms_residual
-            } else {
-                f64::NAN
-            };
-            let p = if f_stat.is_finite() && residual_df > 0 {
-                Some(f_pvalue(f_stat, 1, residual_df))
-            } else {
-                None
-            };
+            let f_stat = ms_residual.map(|ms_res| ms / ms_res);
+            let p = f_stat.map(|f| f_pvalue(f, 1, residual_df));
             EffectRow {
                 name: e.name.clone(),
                 sum_of_squares: e.sum_of_squares,
@@ -609,7 +603,8 @@ mod tests {
         .unwrap();
         let row_a = result.effects.iter().find(|r| r.name == "A").unwrap();
         // A is highly significant
-        assert!(row_a.f_statistic > 10.0, "A F={}", row_a.f_statistic);
+        let f = row_a.f_statistic.expect("residual df > 0");
+        assert!(f > 10.0, "A F={f}");
     }
 
     #[test]
@@ -773,6 +768,23 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[test]
+    fn saturated_anova_reports_no_f_and_no_p() {
+        let design = crate::design::factorial::full_factorial(2).unwrap();
+        let result = doe_anova(&design, &[1.0, 2.0, 3.0, 7.0], &["A", "B", "A:B"]).unwrap();
+        assert_eq!(result.residual_df, 0);
+        for row in &result.effects {
+            assert_eq!((row.f_statistic, row.p_value), (None, None), "{}", row.name);
+        }
+        // Residual degrees of freedom but nothing left over: y is exactly A + B.
+        let result = doe_anova(&design, &[0.0, 2.0, 2.0, 4.0], &["A", "B"]).unwrap();
+        assert_eq!(result.residual_df, 1);
+        assert!(result
+            .effects
+            .iter()
+            .all(|r| r.f_statistic.is_none() && r.p_value.is_none()));
     }
 
     #[test]
