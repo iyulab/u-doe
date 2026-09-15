@@ -57,8 +57,12 @@ pub struct AscentStep {
 ///
 /// # Errors
 ///
-/// Returns `Err` if `responses.len() != run_count`, or if the model matrix
-/// is singular (not enough unique support points).
+/// [`DoeError::ResponseCountMismatch`] if `responses.len() != run_count`;
+/// [`DoeError::EmptyDesign`] or [`DoeError::DesignShapeMismatch`] for a design
+/// with no runs or factors, or with a run of the wrong length;
+/// [`DoeError::OverSpecifiedModel`] if the full quadratic model has more
+/// coefficients than there are runs; [`DoeError::SingularModel`] if the runs do
+/// not support it (too few distinct points, e.g. a two-level design).
 ///
 /// # Examples
 ///
@@ -77,10 +81,24 @@ pub fn fit_rsm(design: &DesignMatrix, responses: &[f64]) -> Result<RsmModel, Doe
     let k = design.factor_count();
 
     if responses.len() != n {
-        return Err(DoeError::InsufficientResponses {
+        return Err(DoeError::ResponseCountMismatch {
             expected: n,
             got: responses.len(),
         });
+    }
+    // An empty design would reach `Matrix::from_rows`, which asserts; a
+    // WebAssembly caller would see that as a trap rather than an error.
+    if n == 0 || k == 0 {
+        return Err(DoeError::EmptyDesign {
+            runs: n,
+            factors: k,
+        });
+    }
+    design.check_shape()?;
+    // Intercept, k linear, k quadratic, k(k-1)/2 interaction terms.
+    let terms = 2 * k + k * (k - 1) / 2;
+    if terms + 1 > n {
+        return Err(DoeError::OverSpecifiedModel { terms, runs: n });
     }
 
     // Build model matrix X (n × p)
@@ -98,21 +116,19 @@ pub fn fit_rsm(design: &DesignMatrix, responses: &[f64]) -> Result<RsmModel, Doe
     // X'X
     let xtx = xt
         .mul_mat(&x_mat)
-        .map_err(|e| DoeError::MatrixError(e.to_string()))?;
+        .expect("X' is p x n and X is n x p by construction");
 
     // X'y  (xt is p×n, responses is n-vector)
     let xty = xt
         .mul_vec(responses)
-        .map_err(|e| DoeError::MatrixError(e.to_string()))?;
+        .expect("X' has n columns and there are n responses, checked above");
 
     // β = (X'X)⁻¹ X'y
-    let xtx_inv = xtx
-        .inverse()
-        .map_err(|e| DoeError::MatrixError(e.to_string()))?;
+    let xtx_inv = xtx.inverse().map_err(|_| DoeError::SingularModel)?;
 
     let coefficients = xtx_inv
         .mul_vec(&xty)
-        .map_err(|e| DoeError::MatrixError(e.to_string()))?;
+        .expect("(X'X)^-1 is p x p and X'y has p entries by construction");
 
     // R² = 1 - SS_res / SS_tot
     let y_mean = responses.iter().sum::<f64>() / n as f64;
@@ -152,19 +168,36 @@ pub fn fit_rsm(design: &DesignMatrix, responses: &[f64]) -> Result<RsmModel, Doe
 ///
 /// Returns an empty `Vec` when `n_steps == 0` or all linear coefficients
 /// are essentially zero.
-pub fn steepest_ascent(model: &RsmModel, n_steps: usize, step_size: f64) -> Vec<AscentStep> {
+///
+/// # Errors
+/// [`DoeError::CoefficientCountMismatch`] if `model.coefficients` does not
+/// have the length a quadratic model in `model.factor_count` factors has. The
+/// fields are public, so a model need not have come from [`fit_rsm`].
+pub fn steepest_ascent(
+    model: &RsmModel,
+    n_steps: usize,
+    step_size: f64,
+) -> Result<Vec<AscentStep>, DoeError> {
     let k = model.factor_count;
+    let expected = model_row(&vec![0.0; k]).len();
+    if model.coefficients.len() != expected {
+        return Err(DoeError::CoefficientCountMismatch {
+            factors: k,
+            expected,
+            got: model.coefficients.len(),
+        });
+    }
     // Linear coefficients: indices 1..=k in coefficients vector
-    let linear: Vec<f64> = model.coefficients[1..=k].to_vec();
+    let linear = &model.coefficients[1..=k];
 
     // Normalise by largest absolute coefficient
     let max_abs = linear.iter().map(|b| b.abs()).fold(0.0_f64, f64::max);
     if max_abs < 1e-12 || n_steps == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let direction: Vec<f64> = linear.iter().map(|b| b / max_abs).collect();
 
-    (1..=n_steps)
+    Ok((1..=n_steps)
         .map(|step| {
             let t = step as f64 * step_size;
             AscentStep {
@@ -172,7 +205,7 @@ pub fn steepest_ascent(model: &RsmModel, n_steps: usize, step_size: f64) -> Vec<
                 step_number: step,
             }
         })
-        .collect()
+        .collect())
 }
 
 /// Build a model matrix row for factor values `x`.
@@ -262,10 +295,76 @@ mod tests {
         let n = design.run_count();
         let responses: Vec<f64> = (0..n).map(|i| i as f64).collect();
         let model = fit_rsm(&design, &responses).unwrap();
-        let steps = steepest_ascent(&model, 5, 0.5);
+        let steps = steepest_ascent(&model, 5, 0.5).expect("model from fit_rsm");
         assert_eq!(steps.len(), 5);
         assert_eq!(steps[0].step_number, 1);
         assert_eq!(steps[0].coded.len(), 2);
+    }
+
+    /// `RsmModel` has public fields and the WebAssembly binding builds one from
+    /// caller input; a short coefficient list used to panic on the slice.
+    #[test]
+    fn steepest_ascent_refuses_a_coefficient_list_of_the_wrong_length() {
+        let model = RsmModel {
+            coefficients: vec![1.0, 2.0],
+            r_squared: 0.0,
+            factor_count: 2,
+        };
+        assert_eq!(
+            steepest_ascent(&model, 3, 0.5).map(|s| s.len()),
+            Err(DoeError::CoefficientCountMismatch {
+                factors: 2,
+                expected: 6,
+                got: 2
+            })
+        );
+    }
+
+    #[test]
+    fn fit_rsm_refuses_empty_ragged_and_underdetermined_designs() {
+        let empty = DesignMatrix {
+            data: vec![],
+            factor_names: vec![],
+        };
+        assert_eq!(
+            fit_rsm(&empty, &[]).map(|m| m.factor_count),
+            Err(DoeError::EmptyDesign {
+                runs: 0,
+                factors: 0
+            })
+        );
+        let ragged = DesignMatrix {
+            data: vec![vec![1.0, 1.0], vec![1.0]],
+            factor_names: vec!["A".into(), "B".into()],
+        };
+        assert_eq!(
+            fit_rsm(&ragged, &[1.0, 2.0]).map(|m| m.factor_count),
+            Err(DoeError::DesignShapeMismatch {
+                run: 1,
+                expected: 2,
+                got: 1
+            })
+        );
+        // Two factors need 6 coefficients; 4 runs cannot give them.
+        let design = crate::design::factorial::full_factorial(2).expect("2^2");
+        assert_eq!(
+            fit_rsm(&design, &[1.0, 2.0, 3.0, 4.0]).map(|m| m.factor_count),
+            Err(DoeError::OverSpecifiedModel { terms: 5, runs: 4 })
+        );
+    }
+
+    /// Enough runs, but a two-level design has no curvature to fit: the
+    /// quadratic columns equal the intercept.
+    #[test]
+    fn fit_rsm_on_a_replicated_two_level_design_is_singular() {
+        let mut design = crate::design::factorial::full_factorial(2).expect("2^2");
+        let copy = design.data.clone();
+        design.data.extend(copy);
+        let y = [1.0, 2.0, 3.0, 4.0, 1.5, 2.5, 3.5, 4.5];
+        assert_eq!(
+            fit_rsm(&design, &y).map(|m| m.factor_count),
+            Err(DoeError::SingularModel)
+        );
     }
 
     #[test]

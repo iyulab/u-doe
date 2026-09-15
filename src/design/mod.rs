@@ -10,6 +10,8 @@ pub mod taguchi;
 
 pub use dsd::definitive_screening;
 
+use crate::error::DoeError;
+
 /// DOE design matrix in coded units.
 ///
 /// Each row represents one experimental run.
@@ -66,6 +68,32 @@ impl DesignMatrix {
             }
         }
         None
+    }
+
+    /// Refuses a run whose length differs from the number of factor names.
+    ///
+    /// `data` and `factor_names` are public fields and the WebAssembly bindings
+    /// fill them straight from caller input, so nothing else keeps them in
+    /// step. Analyses index `data[run][factor]` for every named factor; a short
+    /// row would panic there, and a long one would be read only in part.
+    ///
+    /// # Errors
+    /// [`DoeError::DesignShapeMismatch`] naming the first such run.
+    pub fn check_shape(&self) -> Result<(), DoeError> {
+        let expected = self.factor_count();
+        match self
+            .data
+            .iter()
+            .enumerate()
+            .find(|(_, row)| row.len() != expected)
+        {
+            Some((run, row)) => Err(DoeError::DesignShapeMismatch {
+                run,
+                expected,
+                got: row.len(),
+            }),
+            None => Ok(()),
+        }
     }
 
     /// Default factor names: "A", "B", "C", ...

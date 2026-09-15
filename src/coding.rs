@@ -47,9 +47,7 @@ impl Encoder {
     /// Create an encoder, returning `Err` if `low >= high`.
     pub fn try_new(low: f64, high: f64) -> Result<Self, DoeError> {
         if low >= high {
-            return Err(DoeError::InvalidSpecification(format!(
-                "low ({low}) must be strictly less than high ({high})"
-            )));
+            return Err(DoeError::InvalidCodingRange { low, high });
         }
         Ok(Self {
             center: (high + low) / 2.0,

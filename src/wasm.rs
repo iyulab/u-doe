@@ -12,18 +12,86 @@
 //! ```
 
 use serde::Serialize;
+use serde_json::json;
 use wasm_bindgen::prelude::*;
+
+use crate::error::DoeError;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn js_err(e: impl std::fmt::Display) -> JsValue {
-    JsValue::from_str(&e.to_string())
+/// A refusal on its way to JavaScript: the text for `Error.message`, and the
+/// fields -- `code` first among them -- copied onto the `Error`.
+struct WireError {
+    message: String,
+    fields: serde_json::Value,
 }
 
+impl From<DoeError> for WireError {
+    fn from(e: DoeError) -> Self {
+        WireError {
+            message: e.to_string(),
+            // `DoeError` serializes as `{ code, ...fields }` (see its docs).
+            fields: serde_json::to_value(&e).expect("DoeError serializes to JSON"),
+        }
+    }
+}
+
+impl WireError {
+    /// An argument that is not the shape the function takes: a JSON string
+    /// instead of a value, a wrong type, a missing or unknown key.
+    fn malformed_input(parameter: &str, message: String) -> Self {
+        WireError {
+            message,
+            fields: json!({ "code": "malformed_input", "parameter": parameter }),
+        }
+    }
+
+    /// A string argument that names none of the options the function knows.
+    fn unknown_option(parameter: &str, got: &str, expected: &[&str]) -> Self {
+        WireError {
+            message: format!(
+                "unknown {parameter} '{got}'; expected {}",
+                expected.join(", ")
+            ),
+            fields: json!({
+                "code": "unknown_option",
+                "parameter": parameter,
+                "got": got,
+                "expected": expected,
+            }),
+        }
+    }
+}
+
+/// Every refusal crosses into JavaScript as an `Error` whose `message` is the
+/// readable text and which carries `code` -- a stable reason -- and the values
+/// behind it as further properties (`runs`, `terms`, `supported`, ...). A
+/// program branches on `err.code` and reads the fields; `err.message` reads as
+/// it always did.
+fn js_err(error: impl Into<WireError>) -> JsValue {
+    let error = error.into();
+    let js = js_sys::Error::new(&error.message);
+    // `json_compatible` turns the map into a plain object; the default would
+    // produce a JavaScript `Map`, which `Object.assign` does not read.
+    if let Ok(fields) = error
+        .fields
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+    {
+        js_sys::Object::assign(&js, &fields.into());
+    }
+    js.into()
+}
+
+/// Serializes a response. An absent value (`None`) crosses as `null`, not as a
+/// missing key: `null` is what this crate documents for `curvature`,
+/// `pure_error`, `lenth` and `p_value`, and serde-wasm-bindgen's default of
+/// leaving the key out made every such field `undefined` instead.
 fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(value).map_err(js_err)
+    value
+        .serialize(&serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true))
+        .map_err(|e| js_err(WireError::malformed_input("result", e.to_string())))
 }
 
 /// Deserialize a native JS value, rejecting JSON strings with an actionable
@@ -34,17 +102,21 @@ fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
 /// opaque `TypeError: Reflect.get called on non-object`.
 fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Result<T, JsValue> {
     if value.as_string().is_some() {
-        return Err(JsValue::from_str(&format!(
-            "{param}: expected a native JS array/object, got a string — \
-             pass the value directly, not JSON.stringify(...)"
+        return Err(js_err(WireError::malformed_input(
+            param,
+            format!(
+                "{param}: expected a native JS array/object, got a string — \
+                 pass the value directly, not JSON.stringify(...)"
+            ),
         )));
     }
     // serde-wasm-bindgen reads only a struct's declared fields from a JS
     // object, so `deny_unknown_fields` never sees extra keys. Round-trip
     // through serde_json::Value so the strict wire schema is enforced.
     let json: serde_json::Value = serde_wasm_bindgen::from_value(value)
-        .map_err(|e| JsValue::from_str(&format!("{param}: {e}")))?;
-    serde_json::from_value(json).map_err(|e| JsValue::from_str(&format!("{param}: {e}")))
+        .map_err(|e| js_err(WireError::malformed_input(param, format!("{param}: {e}"))))?;
+    serde_json::from_value(json)
+        .map_err(|e| js_err(WireError::malformed_input(param, format!("{param}: {e}"))))
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +239,7 @@ struct PureErrorDto {
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///
 /// # Errors
-/// Returns an error string if `k` is out of range (1..=7).
+/// Throws an `Error` carrying `code` if `k` is out of range (2..=7).
 #[wasm_bindgen]
 pub fn full_factorial(k: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::factorial::full_factorial(k).map_err(js_err)?;
@@ -183,7 +255,7 @@ pub fn full_factorial(k: usize) -> Result<JsValue, JsValue> {
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///
 /// # Errors
-/// Returns an error string if `k` is out of range (2..=6), `n_center == 0`,
+/// Throws an `Error` carrying `code` if `k` is out of range (2..=6), `n_center == 0`,
 /// or `design_type` is unrecognised.
 #[wasm_bindgen]
 pub fn ccd(k: usize, design_type: &str, n_center: usize) -> Result<JsValue, JsValue> {
@@ -192,9 +264,10 @@ pub fn ccd(k: usize, design_type: &str, n_center: usize) -> Result<JsValue, JsVa
         "Rotatable" => crate::design::ccd::AlphaType::Rotatable,
         "Inscribed" => crate::design::ccd::AlphaType::Inscribed,
         other => {
-            return Err(js_err(format!(
-                "unknown design_type '{}'; expected FaceCentered, Rotatable, or Inscribed",
-                other
+            return Err(js_err(WireError::unknown_option(
+                "design_type",
+                other,
+                &["FaceCentered", "Rotatable", "Inscribed"],
             )))
         }
     };
@@ -209,7 +282,7 @@ pub fn ccd(k: usize, design_type: &str, n_center: usize) -> Result<JsValue, JsVa
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///
 /// # Errors
-/// Returns an error string if `k` is not 3, 4, or 5, or `n_center == 0`.
+/// Throws an `Error` carrying `code` if `k` is not 3, 4, or 5, or `n_center == 0`.
 #[wasm_bindgen]
 pub fn box_behnken(k: usize, n_center: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::box_behnken::box_behnken(k, n_center).map_err(js_err)?;
@@ -225,7 +298,7 @@ pub fn box_behnken(k: usize, n_center: usize) -> Result<JsValue, JsValue> {
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///
 /// # Errors
-/// Returns an error string if the array name is unknown or `k` exceeds capacity.
+/// Throws an `Error` carrying `code` if the array name is unknown or `k` exceeds capacity.
 #[wasm_bindgen]
 pub fn taguchi_array(name: &str, k: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::taguchi::taguchi_array(name, k).map_err(js_err)?;
@@ -237,7 +310,7 @@ pub fn taguchi_array(name: &str, k: usize) -> Result<JsValue, JsValue> {
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///
 /// # Errors
-/// Returns an error string if `k` is out of the supported range.
+/// Throws an `Error` carrying `code` if `k` is out of the supported range.
 #[wasm_bindgen]
 pub fn definitive_screening(k: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::definitive_screening(k).map_err(js_err)?;
@@ -266,7 +339,7 @@ pub fn definitive_screening(k: usize) -> Result<JsValue, JsValue> {
 /// curvature against the pure error.
 ///
 /// # Errors
-/// Returns an error string if dimensions do not match or an argument has the
+/// Throws an `Error` carrying `code` if dimensions do not match or an argument has the
 /// wrong shape (arguments are native JS values, not JSON strings).
 #[wasm_bindgen]
 pub fn doe_anova(
@@ -333,7 +406,7 @@ pub fn doe_anova(
 /// On balanced data the effects and sums of squares equal `doe_anova`'s.
 ///
 /// # Errors
-/// Returns an error string if dimensions do not match, an entry is not ±1
+/// Throws an `Error` carrying `code` if dimensions do not match, an entry is not ±1
 /// (centre points belong in `doe_anova`, axial points in `fit_rsm`), the
 /// requested terms are aliased with each other or with the mean over the runs
 /// kept, or the terms and intercept outnumber the runs.
@@ -392,7 +465,7 @@ pub fn fit_least_squares(
 /// Returns a flat `[f64]` of SN values in dB, one per run.
 ///
 /// # Errors
-/// Returns an error string if the goal string is unrecognised, or if the
+/// Throws an `Error` carrying `code` if the goal string is unrecognised, or if the
 /// response data violates the requirements for the chosen goal.
 #[wasm_bindgen]
 pub fn signal_to_noise(responses: JsValue, goal: &str) -> Result<JsValue, JsValue> {
@@ -403,9 +476,10 @@ pub fn signal_to_noise(responses: JsValue, goal: &str) -> Result<JsValue, JsValu
         "SmallerIsBetter" => crate::analysis::taguchi_sn::SnGoal::SmallerIsBetter,
         "NominalIsBest" => crate::analysis::taguchi_sn::SnGoal::NominalIsBest,
         other => {
-            return Err(js_err(format!(
-                "unknown goal '{}'; expected LargerIsBetter, SmallerIsBetter, or NominalIsBest",
-                other
+            return Err(js_err(WireError::unknown_option(
+                "goal",
+                other,
+                &["LargerIsBetter", "SmallerIsBetter", "NominalIsBest"],
             )))
         }
     };
@@ -427,7 +501,7 @@ pub fn signal_to_noise(responses: JsValue, goal: &str) -> Result<JsValue, JsValu
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///
 /// # Errors
-/// Returns an error string if the (k, p) combination is not in the standard table.
+/// Throws an `Error` carrying `code` if the (k, p) combination is not in the standard table.
 #[wasm_bindgen]
 pub fn fractional_factorial(k: usize, p: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::factorial::fractional_factorial(k, p).map_err(js_err)?;
@@ -446,11 +520,26 @@ pub fn fractional_factorial(k: usize, p: usize) -> Result<JsValue, JsValue> {
 /// generators: ["E=ABC", "F=BCD", "G=ACD"] }`.
 ///
 /// # Errors
-/// Returns an error string if the (k, p) combination is not in the standard table.
+/// Throws an `Error` carrying `code` if the (k, p) combination is not in the standard table.
 #[wasm_bindgen]
 pub fn fractional_factorial_info(k: usize, p: usize) -> Result<JsValue, JsValue> {
     let info = crate::design::factorial::fractional_factorial_info(k, p).map_err(js_err)?;
     to_js(&FractionalInfoDto::from(info))
+}
+
+/// Every 2^(k-p) fraction `fractional_factorial` can build, in ascending
+/// `(k, p)` order, each with the metadata `fractional_factorial_info` returns:
+/// `[{ k, p, resolution, defining_relation, generators }]`.
+///
+/// Lets a caller offer exactly the buildable fractions without copying the
+/// table or trying each `(k, p)` and catching the refusal.
+#[wasm_bindgen]
+pub fn standard_fractions() -> Result<JsValue, JsValue> {
+    let table: Vec<FractionalInfoDto> = crate::design::factorial::standard_fractions()
+        .into_iter()
+        .map(FractionalInfoDto::from)
+        .collect();
+    to_js(&table)
 }
 
 /// Generate a Plackett-Burman screening design for `k` factors (1 ≤ k ≤ 19).
@@ -460,7 +549,7 @@ pub fn fractional_factorial_info(k: usize, p: usize) -> Result<JsValue, JsValue>
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///
 /// # Errors
-/// Returns an error string if `k == 0` or `k > 19`.
+/// Throws an `Error` carrying `code` if `k == 0` or `k > 19`.
 #[wasm_bindgen]
 pub fn plackett_burman(k: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::plackett_burman::plackett_burman(k).map_err(js_err)?;
@@ -553,7 +642,7 @@ struct EstimateEffectsResultDto {
 /// different order from `effects`, so positional pairing would mislabel them.
 ///
 /// # Errors
-/// Returns an error string if dimensions do not match or an argument has the
+/// Throws an `Error` carrying `code` if dimensions do not match or an argument has the
 /// wrong shape (arguments are native JS values, not JSON strings), or if the
 /// runs are unbalanced or two terms are partially aliased -- a run left out,
 /// unequal replication, or a 12-run Plackett-Burman at `max_order` 2. The
@@ -630,7 +719,7 @@ struct RsmModelDto {
 /// Coefficient order: [intercept, linear..., quadratic..., interactions...].
 ///
 /// # Errors
-/// Returns an error string if dimensions do not match, an argument has the
+/// Throws an `Error` carrying `code` if dimensions do not match, an argument has the
 /// wrong shape (arguments are native JS values, not JSON strings),
 /// or the model matrix is singular.
 #[wasm_bindgen]
@@ -687,7 +776,8 @@ pub fn steepest_ascent(
         factor_count,
     };
 
-    let steps = crate::analysis::rsm::steepest_ascent(&model, n_steps, step_size);
+    let steps =
+        crate::analysis::rsm::steepest_ascent(&model, n_steps, step_size).map_err(js_err)?;
 
     let dto = SteepestAscentResultDto {
         steps: steps
@@ -741,7 +831,7 @@ struct DesirabilityResultDto {
 /// importance-weighted geometric mean (∏ dᵢ^rᵢ)^(1/Σrᵢ).
 ///
 /// # Errors
-/// Returns an error string if `specs` has the wrong shape (native JS values,
+/// Throws an `Error` carrying `code` if `specs` has the wrong shape (native JS values,
 /// not JSON strings), specs/responses length mismatch, or goal string is
 /// unrecognised.
 #[wasm_bindgen]
@@ -749,11 +839,10 @@ pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValu
     let inputs: Vec<ResponseSpecInput> = from_js(specs, "specs")?;
 
     if inputs.len() != responses.len() {
-        return Err(js_err(format!(
-            "specs length ({}) does not match responses length ({})",
-            inputs.len(),
-            responses.len()
-        )));
+        return Err(js_err(DoeError::ResponseCountMismatch {
+            expected: inputs.len(),
+            got: responses.len(),
+        }));
     }
 
     let specs: Vec<crate::optimization::desirability::ResponseSpec> = inputs
@@ -764,9 +853,10 @@ pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValu
                 "Minimize" => crate::optimization::desirability::GoalType::Minimize,
                 "Target" => crate::optimization::desirability::GoalType::Target,
                 other => {
-                    return Err(js_err(format!(
-                        "unknown goal '{}'; expected Maximize, Minimize, or Target",
-                        other
+                    return Err(js_err(WireError::unknown_option(
+                        "goal",
+                        other,
+                        &["Maximize", "Minimize", "Target"],
                     )))
                 }
             };

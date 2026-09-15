@@ -141,6 +141,9 @@ const L27_COLS: &[&[u8]] = &[
     ],
 ];
 
+/// Names of the arrays in [`ARRAYS`], in the same order.
+const ARRAY_NAMES: &[&str] = &["L4", "L8", "L9", "L12", "L16", "L18", "L27"];
+
 const ARRAYS: &[ArraySpec] = &[
     ArraySpec {
         name: "L4",
@@ -233,7 +236,7 @@ fn to_coded(level: u8, n_levels: usize) -> f64 {
 ///
 /// # Errors
 ///
-/// Returns [`DoeError::UnsupportedDesign`] if `name` is not recognised.
+/// Returns [`DoeError::UnknownArray`] if `name` is not recognised.
 /// Returns [`DoeError::InvalidFactorCount`] if `k == 0` or `k > max_factors`.
 ///
 /// # Examples
@@ -245,11 +248,13 @@ fn to_coded(level: u8, n_levels: usize) -> f64 {
 /// assert_eq!(d.factor_count(), 7);
 /// ```
 pub fn taguchi_array(name: &str, k: usize) -> Result<DesignMatrix, DoeError> {
-    let spec = ARRAYS.iter().find(|a| a.name == name).ok_or_else(|| {
-        DoeError::UnsupportedDesign(format!(
-            "unknown Taguchi array '{name}'; supported: L4, L8, L9, L12, L16, L18, L27"
-        ))
-    })?;
+    let spec = ARRAYS
+        .iter()
+        .find(|a| a.name == name)
+        .ok_or_else(|| DoeError::UnknownArray {
+            array: name.to_string(),
+            supported: ARRAY_NAMES,
+        })?;
 
     if k == 0 || k > spec.max_factors {
         return Err(DoeError::InvalidFactorCount {
@@ -281,6 +286,21 @@ pub fn taguchi_array(name: &str, k: usize) -> Result<DesignMatrix, DoeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `ARRAY_NAMES` is what an unknown name is answered with; it has to be
+    /// the list of arrays that exist.
+    #[test]
+    fn array_names_match_the_arrays() {
+        let names: Vec<&str> = ARRAYS.iter().map(|a| a.name).collect();
+        assert_eq!(names, ARRAY_NAMES);
+        assert_eq!(
+            taguchi_array("L5", 2).map(|d| d.run_count()),
+            Err(DoeError::UnknownArray {
+                array: "L5".into(),
+                supported: ARRAY_NAMES,
+            })
+        );
+    }
 
     #[test]
     fn l4_structure() {

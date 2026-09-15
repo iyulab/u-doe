@@ -146,11 +146,14 @@ pub fn doe_anova(
 ) -> Result<DoeAnovaResult, DoeError> {
     let n = design.run_count();
     if responses.len() != n {
-        return Err(DoeError::InsufficientResponses {
+        return Err(DoeError::ResponseCountMismatch {
             expected: n,
             got: responses.len(),
         });
     }
+    // Before the centre-point test reads any row: a short row of zeros would
+    // otherwise pass for a centre point.
+    design.check_shape()?;
 
     // Centre points -- runs with every factor at 0 -- are set aside; the
     // effects come from the factorial runs.
@@ -200,7 +203,7 @@ pub fn doe_anova(
                 .iter()
                 .find(|e| e.name == name)
                 .ok_or_else(|| DoeError::UnknownEffect {
-                    name: name.to_string(),
+                    effect: name.to_string(),
                 })
         })
         .collect::<Result<_, _>>()?;
@@ -646,7 +649,7 @@ mod tests {
         let err = doe_anova(&design, &responses, &["A", "Z"]).unwrap_err();
         assert_eq!(
             err,
-            crate::error::DoeError::UnknownEffect { name: "Z".into() }
+            crate::error::DoeError::UnknownEffect { effect: "Z".into() }
         );
         // Legacy separator-less interaction names are unknown (renamed in 0.5.0)
         assert!(doe_anova(&design, &responses, &["AB"]).is_err());
@@ -752,6 +755,27 @@ mod tests {
     }
 
     #[test]
+    fn ragged_design_is_an_error_not_a_panic() {
+        use crate::design::DesignMatrix;
+        // A short row of zeros would pass for a centre point; a short factorial
+        // row would be indexed past its end.
+        for short in [vec![0.0], vec![1.0]] {
+            let design = DesignMatrix {
+                data: vec![vec![-1.0, -1.0], vec![1.0, -1.0], vec![-1.0, 1.0], short],
+                factor_names: vec!["A".into(), "B".into()],
+            };
+            assert_eq!(
+                doe_anova(&design, &[1.0, 2.0, 3.0, 4.0], &["A"]).map(|r| r.residual_df),
+                Err(DoeError::DesignShapeMismatch {
+                    run: 3,
+                    expected: 2,
+                    got: 1
+                })
+            );
+        }
+    }
+
+    #[test]
     fn empty_design_is_an_error_not_a_panic() {
         use crate::design::DesignMatrix;
         let empty = DesignMatrix {
@@ -760,7 +784,10 @@ mod tests {
         };
         assert!(matches!(
             doe_anova(&empty, &[], &["A"]),
-            Err(DoeError::UnsupportedDesign(_))
+            Err(DoeError::EmptyDesign {
+                runs: 0,
+                factors: 0
+            })
         ));
     }
 }

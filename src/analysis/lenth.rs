@@ -56,7 +56,7 @@ pub struct LenthResult {
 /// # Errors
 ///
 /// [`DoeError::NotTwoLevelCoded`] if the design is not two-level coded;
-/// [`DoeError::UnsupportedDesign`] if an effect names a column the design does
+/// [`DoeError::EffectOutsideDesign`] if an effect names a column the design does
 /// not have, or if there are fewer than 3 distinct contrasts -- the reference
 /// distribution then has less than one degree of freedom;
 /// [`DoeError::PartiallyAliasedEffects`] or [`DoeError::AliasedEffects`] if the
@@ -77,16 +77,17 @@ pub struct LenthResult {
 /// assert_eq!(result.distinct_contrasts, 7);
 /// ```
 pub fn lenth(design: &DesignMatrix, effects: &[EffectEstimate]) -> Result<LenthResult, DoeError> {
+    design.check_shape()?;
     if let Some((run, factor, value)) = design.two_level_violation() {
         return Err(DoeError::NotTwoLevelCoded { run, factor, value });
     }
     let n = design.run_count();
     let k = design.factor_count();
     if let Some(e) = effects.iter().find(|e| e.columns.iter().any(|&c| c >= k)) {
-        return Err(DoeError::UnsupportedDesign(format!(
-            "effect {} names a column the design does not have ({k} factors)",
-            e.name
-        )));
+        return Err(DoeError::EffectOutsideDesign {
+            effect: e.name.clone(),
+            factors: k,
+        });
     }
 
     // One magnitude per distinct contrast column. Aliased terms share a column
@@ -113,9 +114,7 @@ pub fn lenth(design: &DesignMatrix, effects: &[EffectEstimate]) -> Result<LenthR
 
     let m = magnitudes.len();
     if m < 3 {
-        return Err(DoeError::UnsupportedDesign(format!(
-            "Lenth's method needs at least 3 distinct contrasts, got {m}"
-        )));
+        return Err(DoeError::TooFewContrasts { needed: 3, got: m });
     }
 
     let s0 = 1.5 * median(&magnitudes);
@@ -235,7 +234,7 @@ mod tests {
         let effects = estimate_effects(&design, &[1.0, 2.0, 3.0, 5.0], 1).expect("A, B");
         assert!(matches!(
             lenth(&design, &effects),
-            Err(DoeError::UnsupportedDesign(_))
+            Err(DoeError::TooFewContrasts { needed: 3, got: 2 })
         ));
     }
 }

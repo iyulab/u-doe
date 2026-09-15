@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** every WASM function throws an `Error` carrying `code` and the
+  values behind the refusal (`err.terms`, `err.runs`, `err.first`,
+  `err.supported`, ...) instead of a bare string; `err.message` keeps the
+  readable text. The codes and fields are listed in the README.
+- **Breaking:** `DoeError` carries fields instead of text. The catch-all
+  `UnsupportedDesign(String)`, `InvalidSpecification(String)` and
+  `MatrixError(String)` are gone, replaced by `UnsupportedFraction`,
+  `UnknownArray`, `EmptyDesign`, `ParameterOutOfRange`, `TooFewContrasts`,
+  `EffectOutsideDesign`, `InvalidCodingRange`, `EmptyResponses`,
+  `TooFewReplicates`, `NonPositiveResponse` and `SingularModel`.
+  `InsufficientResponses` is renamed `ResponseCountMismatch` (too many
+  responses are refused too), and `UnknownEffect { name }` is
+  `UnknownEffect { effect }`. `DoeError::code()` returns the same `code` the
+  WASM error carries.
+- **Breaking:** `analysis::rsm::steepest_ascent` returns a `Result`.
+- **Breaking:** WASM results carry `null` for an absent value (`curvature`,
+  `pure_error`, `lenth`, `p_value`), as documented, instead of `undefined`.
+  Test with `== null`.
+
+### Added
+
+- `design::factorial::standard_fractions()` and the WASM function
+  `standard_fractions()`: every 2^(k-p) fraction the crate can build, with its
+  resolution, defining relation and generators.
+- `DesignMatrix::check_shape()`.
+
+### Fixed
+
+- A run whose length differs from the number of factor names is refused
+  (`DesignShapeMismatch`). It used to index past the row -- a panic, which a
+  WASM caller receives as `RuntimeError: unreachable` -- or, for a short row of
+  zeros in `doe_anova`, pass for a centre point.
+- `fit_rsm` refuses an empty design and a design with fewer runs than the
+  quadratic model has coefficients, instead of panicking or reporting a
+  matrix error; `steepest_ascent` refuses a coefficient list of the wrong
+  length instead of panicking.
+- `fit_least_squares` reported `OverSpecifiedModel` with the mean counted as a
+  term ("model has 8 terms but the design has only 6 degrees of freedom" for
+  seven terms on seven runs). `terms` now counts the terms, as `doe_anova`
+  always did.
+- `fit_least_squares` named a term constant over the runs as
+  `effects 'I' and 'C'` rather than "effect 'C' is aliased with the overall
+  mean": the mean now goes second, as everywhere else in the crate.
+
 ## [0.12.1] - 2026-09-15
 
 ### Fixed

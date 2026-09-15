@@ -1,18 +1,54 @@
 /// Errors produced by u-doe operations.
+///
+/// Every variant carries the values that explain it as fields rather than as
+/// text, so a caller can tell refusals apart and say what to change without
+/// reading the message. With the `wasm` feature the variants serialize as a
+/// flat object whose `code` is the variant name in `snake_case`
+/// (`OverSpecifiedModel` → `"over_specified_model"`) next to those fields; the
+/// WebAssembly bindings attach that object to the `Error` they throw.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "wasm",
+    derive(serde::Serialize),
+    serde(tag = "code", rename_all = "snake_case")
+)]
 pub enum DoeError {
     /// Invalid number of factors for this design type.
     InvalidFactorCount { min: usize, max: usize, got: usize },
-    /// Insufficient response data.
-    InsufficientResponses { expected: usize, got: usize },
-    /// Specification limits are invalid.
-    InvalidSpecification(String),
+    /// A numeric parameter other than the factor count is outside the range the
+    /// function accepts. `max` is `None` when there is no upper bound.
+    ParameterOutOfRange {
+        parameter: &'static str,
+        min: usize,
+        max: Option<usize>,
+        got: usize,
+    },
+    /// The 2^(k-p) fraction is not in the standard generator table. `supported`
+    /// lists every `(k, p)` that is.
+    UnsupportedFraction {
+        k: usize,
+        p: usize,
+        supported: Vec<(usize, usize)>,
+    },
+    /// No Taguchi orthogonal array has this name. `supported` lists the names.
+    UnknownArray {
+        array: String,
+        supported: &'static [&'static str],
+    },
+    /// A design with no runs or no factors: there is nothing to analyse.
+    EmptyDesign { runs: usize, factors: usize },
+    /// A run has a different number of entries from the number of factor names.
+    DesignShapeMismatch {
+        run: usize,
+        expected: usize,
+        got: usize,
+    },
+    /// The number of responses differs from the number of runs.
+    ResponseCountMismatch { expected: usize, got: usize },
     /// Effect name not found among the effects estimable for the design.
-    UnknownEffect { name: String },
-    /// Matrix operation failed.
-    MatrixError(String),
-    /// Requested design not supported in v0.1.
-    UnsupportedDesign(String),
+    UnknownEffect { effect: String },
+    /// An effect refers to a factor column the design does not have.
+    EffectOutsideDesign { effect: String, factors: usize },
     /// A design matrix that must be two-level coded (every entry -1 or +1)
     /// carries some other value.
     NotTwoLevelCoded {
@@ -21,7 +57,8 @@ pub enum DoeError {
         value: f64,
     },
     /// Two requested effects share the same contrast column, so they are
-    /// aliased in this design and cannot be estimated separately.
+    /// aliased in this design and cannot be estimated separately. `second` is
+    /// `I` when the contrast is constant, i.e. aliased with the overall mean.
     AliasedEffects { first: String, second: String },
     /// Two requested effects -- or an effect and the overall mean, written `I` --
     /// have contrasts that are correlated without being identical. The per-term
@@ -30,8 +67,67 @@ pub enum DoeError {
     /// produce this for two-factor interactions.
     PartiallyAliasedEffects { first: String, second: String },
     /// The requested model has more terms than the design has degrees of
-    /// freedom to spend on them.
+    /// freedom to spend on them. `terms` counts the model terms (and the
+    /// curvature term, when there is one) but not the mean; the design offers
+    /// `runs - 1` degrees of freedom.
     OverSpecifiedModel { terms: usize, runs: usize },
+    /// The model matrix is singular: its columns are linearly dependent over
+    /// the runs given, so the coefficients are not identifiable.
+    SingularModel,
+    /// A response-surface model whose coefficient list does not have the
+    /// length a full quadratic model in `factors` factors has.
+    CoefficientCountMismatch {
+        factors: usize,
+        expected: usize,
+        got: usize,
+    },
+    /// Lenth's method needs at least `needed` distinct contrasts.
+    TooFewContrasts { needed: usize, got: usize },
+    /// A coding range whose low end is not below its high end.
+    InvalidCodingRange { low: f64, high: f64 },
+    /// No responses were given.
+    EmptyResponses,
+    /// A run has fewer replicate measurements than the calculation needs.
+    TooFewReplicates {
+        run: usize,
+        needed: usize,
+        got: usize,
+    },
+    /// A response that must be strictly positive is not.
+    NonPositiveResponse { run: usize, value: f64 },
+}
+
+impl DoeError {
+    /// Stable, machine-readable reason: the variant name in `snake_case`.
+    ///
+    /// ```
+    /// use u_doe::error::DoeError;
+    /// assert_eq!(DoeError::SingularModel.code(), "singular_model");
+    /// ```
+    pub fn code(&self) -> &'static str {
+        match self {
+            DoeError::InvalidFactorCount { .. } => "invalid_factor_count",
+            DoeError::ParameterOutOfRange { .. } => "parameter_out_of_range",
+            DoeError::UnsupportedFraction { .. } => "unsupported_fraction",
+            DoeError::UnknownArray { .. } => "unknown_array",
+            DoeError::EmptyDesign { .. } => "empty_design",
+            DoeError::DesignShapeMismatch { .. } => "design_shape_mismatch",
+            DoeError::ResponseCountMismatch { .. } => "response_count_mismatch",
+            DoeError::UnknownEffect { .. } => "unknown_effect",
+            DoeError::EffectOutsideDesign { .. } => "effect_outside_design",
+            DoeError::NotTwoLevelCoded { .. } => "not_two_level_coded",
+            DoeError::AliasedEffects { .. } => "aliased_effects",
+            DoeError::PartiallyAliasedEffects { .. } => "partially_aliased_effects",
+            DoeError::OverSpecifiedModel { .. } => "over_specified_model",
+            DoeError::SingularModel => "singular_model",
+            DoeError::CoefficientCountMismatch { .. } => "coefficient_count_mismatch",
+            DoeError::TooFewContrasts { .. } => "too_few_contrasts",
+            DoeError::InvalidCodingRange { .. } => "invalid_coding_range",
+            DoeError::EmptyResponses => "empty_responses",
+            DoeError::TooFewReplicates { .. } => "too_few_replicates",
+            DoeError::NonPositiveResponse { .. } => "non_positive_response",
+        }
+    }
 }
 
 impl std::fmt::Display for DoeError {
@@ -40,17 +136,56 @@ impl std::fmt::Display for DoeError {
             DoeError::InvalidFactorCount { min, max, got } => {
                 write!(f, "invalid factor count: expected {min}..={max}, got {got}")
             }
-            DoeError::InsufficientResponses { expected, got } => {
-                write!(f, "insufficient responses: expected {expected}, got {got}")
+            DoeError::ParameterOutOfRange {
+                parameter,
+                min,
+                max: Some(max),
+                got,
+            } => write!(f, "{parameter} must be in {min}..={max}, got {got}"),
+            DoeError::ParameterOutOfRange {
+                parameter,
+                min,
+                max: None,
+                got,
+            } => write!(f, "{parameter} must be at least {min}, got {got}"),
+            DoeError::UnsupportedFraction { k, p, supported } => {
+                write!(
+                    f,
+                    "unsupported design: 2^({k}-{p}) not in standard table; supported (k,p): "
+                )?;
+                for (i, (k, p)) in supported.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(",")?;
+                    }
+                    write!(f, "({k},{p})")?;
+                }
+                Ok(())
             }
-            DoeError::InvalidSpecification(msg) => write!(f, "invalid specification: {msg}"),
-            DoeError::UnknownEffect { name } => write!(
+            DoeError::UnknownArray { array, supported } => write!(
                 f,
-                "unknown effect '{name}': effect names are factor names joined with ':' \
+                "unknown Taguchi array '{array}'; supported: {}",
+                supported.join(", ")
+            ),
+            DoeError::EmptyDesign { runs, factors } => write!(
+                f,
+                "design has {runs} runs and {factors} factors; both must be non-zero"
+            ),
+            DoeError::DesignShapeMismatch { run, expected, got } => write!(
+                f,
+                "run {run} has {got} entries but the design names {expected} factors"
+            ),
+            DoeError::ResponseCountMismatch { expected, got } => {
+                write!(f, "expected one response per run ({expected}), got {got}")
+            }
+            DoeError::UnknownEffect { effect } => write!(
+                f,
+                "unknown effect '{effect}': effect names are factor names joined with ':' \
                  (e.g. \"A\", \"A:B\")"
             ),
-            DoeError::MatrixError(msg) => write!(f, "matrix error: {msg}"),
-            DoeError::UnsupportedDesign(msg) => write!(f, "unsupported design: {msg}"),
+            DoeError::EffectOutsideDesign { effect, factors } => write!(
+                f,
+                "effect {effect} names a column the design does not have ({factors} factors)"
+            ),
             DoeError::NotTwoLevelCoded { run, factor, value } => write!(
                 f,
                 "design is not two-level coded: run {run}, factor {factor} is {value}, \
@@ -92,6 +227,35 @@ impl std::fmt::Display for DoeError {
                  ({runs} runs); drop terms or add runs",
                 runs.saturating_sub(1)
             ),
+            DoeError::SingularModel => write!(
+                f,
+                "model matrix is singular: its columns are linearly dependent over these \
+                 runs, so the coefficients cannot be identified; add runs or drop terms"
+            ),
+            DoeError::CoefficientCountMismatch {
+                factors,
+                expected,
+                got,
+            } => write!(
+                f,
+                "a quadratic model in {factors} factors has {expected} coefficients, got {got}"
+            ),
+            DoeError::TooFewContrasts { needed, got } => write!(
+                f,
+                "Lenth's method needs at least {needed} distinct contrasts, got {got}"
+            ),
+            DoeError::InvalidCodingRange { low, high } => {
+                write!(f, "low ({low}) must be strictly less than high ({high})")
+            }
+            DoeError::EmptyResponses => write!(f, "responses must not be empty"),
+            DoeError::TooFewReplicates { run, needed, got } => write!(
+                f,
+                "run {run}: needs at least {needed} replicates, got {got}"
+            ),
+            DoeError::NonPositiveResponse { run, value } => write!(
+                f,
+                "run {run}: responses must be greater than 0, got {value}"
+            ),
         }
     }
 }
@@ -102,11 +266,52 @@ impl std::error::Error for DoeError {}
 mod tests {
     use super::*;
 
-    /// Line continuations without a trailing backslash put runs of spaces into
-    /// these messages. A caller reads them verbatim.
-    #[test]
-    fn messages_carry_no_runs_of_spaces() {
-        let errors = [
+    fn every_variant() -> Vec<DoeError> {
+        vec![
+            DoeError::InvalidFactorCount {
+                min: 2,
+                max: 7,
+                got: 1,
+            },
+            DoeError::ParameterOutOfRange {
+                parameter: "n_center",
+                min: 1,
+                max: None,
+                got: 0,
+            },
+            DoeError::ParameterOutOfRange {
+                parameter: "m",
+                min: 1,
+                max: Some(4),
+                got: 0,
+            },
+            DoeError::UnsupportedFraction {
+                k: 4,
+                p: 2,
+                supported: vec![(4, 1), (5, 1)],
+            },
+            DoeError::UnknownArray {
+                array: "L5".into(),
+                supported: &["L4", "L8"],
+            },
+            DoeError::EmptyDesign {
+                runs: 0,
+                factors: 0,
+            },
+            DoeError::DesignShapeMismatch {
+                run: 1,
+                expected: 3,
+                got: 2,
+            },
+            DoeError::ResponseCountMismatch {
+                expected: 8,
+                got: 7,
+            },
+            DoeError::UnknownEffect { effect: "Z".into() },
+            DoeError::EffectOutsideDesign {
+                effect: "D".into(),
+                factors: 3,
+            },
             DoeError::NotTwoLevelCoded {
                 run: 3,
                 factor: 1,
@@ -116,6 +321,10 @@ mod tests {
                 first: "A".into(),
                 second: "B:C".into(),
             },
+            DoeError::AliasedEffects {
+                first: "A:B:C".into(),
+                second: "I".into(),
+            },
             DoeError::PartiallyAliasedEffects {
                 first: "A:B".into(),
                 second: "C".into(),
@@ -124,16 +333,76 @@ mod tests {
                 first: "A".into(),
                 second: "I".into(),
             },
-            DoeError::AliasedEffects {
-                first: "A:B:C".into(),
-                second: "I".into(),
-            },
             DoeError::OverSpecifiedModel { terms: 9, runs: 8 },
-            DoeError::UnknownEffect { name: "Z".into() },
-        ];
-        for e in errors {
+            DoeError::SingularModel,
+            DoeError::CoefficientCountMismatch {
+                factors: 2,
+                expected: 6,
+                got: 2,
+            },
+            DoeError::TooFewContrasts { needed: 3, got: 2 },
+            DoeError::InvalidCodingRange {
+                low: 2.0,
+                high: 1.0,
+            },
+            DoeError::EmptyResponses,
+            DoeError::TooFewReplicates {
+                run: 0,
+                needed: 2,
+                got: 1,
+            },
+            DoeError::NonPositiveResponse {
+                run: 2,
+                value: -1.0,
+            },
+        ]
+    }
+
+    /// Line continuations without a trailing backslash put runs of spaces into
+    /// these messages. A caller reads them verbatim.
+    #[test]
+    fn messages_carry_no_runs_of_spaces() {
+        for e in every_variant() {
             let msg = e.to_string();
             assert!(!msg.contains("  "), "{msg}");
+        }
+    }
+
+    #[test]
+    fn unsupported_fraction_message_lists_the_table() {
+        let e = DoeError::UnsupportedFraction {
+            k: 4,
+            p: 2,
+            supported: vec![(4, 1), (5, 2)],
+        };
+        assert_eq!(
+            e.to_string(),
+            "unsupported design: 2^(4-2) not in standard table; supported (k,p): (4,1),(5,2)"
+        );
+    }
+
+    /// `code()` and the serialized `code` are two spellings of one rule; a
+    /// variant added to one and not the other would drift silently.
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn serialized_code_matches_code_method() {
+        for e in every_variant() {
+            let v = serde_json::to_value(&e).expect("DoeError serializes");
+            assert_eq!(v["code"], e.code(), "{e:?}");
+        }
+    }
+
+    /// The fields are copied onto a JavaScript `Error`, whose own `message`,
+    /// `name`, `stack` and `cause` a field of the same name would overwrite.
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn serialized_fields_do_not_shadow_error_properties() {
+        for e in every_variant() {
+            let v = serde_json::to_value(&e).expect("DoeError serializes");
+            let obj = v.as_object().expect("an object");
+            for reserved in ["message", "name", "stack", "cause"] {
+                assert!(!obj.contains_key(reserved), "{e:?} carries `{reserved}`");
+            }
         }
     }
 }

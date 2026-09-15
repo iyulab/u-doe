@@ -244,7 +244,29 @@ pub fn fractional_factorial(k: usize, p: usize) -> Result<DesignMatrix, DoeError
 /// assert_eq!(info.generators, vec!["D=ABC"]);
 /// ```
 pub fn fractional_factorial_info(k: usize, p: usize) -> Result<FractionalInfo, DoeError> {
-    let entry = find_entry(k, p)?;
+    find_entry(k, p).map(entry_info)
+}
+
+/// Every 2^(k-p) fraction [`fractional_factorial`] can build, with its
+/// metadata, in ascending `(k, p)` order.
+///
+/// A caller offering a choice of fractions can list exactly these instead of
+/// copying the table or trying each `(k, p)` and catching the refusal.
+///
+/// # Examples
+///
+/// ```
+/// use u_doe::design::factorial::{standard_fractions, fractional_factorial};
+/// let table = standard_fractions();
+/// assert!(table.iter().all(|f| fractional_factorial(f.k, f.p).is_ok()));
+/// assert!(table.iter().any(|f| (f.k, f.p) == (7, 3)));
+/// ```
+pub fn standard_fractions() -> Vec<FractionalInfo> {
+    GENERATOR_TABLE.iter().map(entry_info).collect()
+}
+
+fn entry_info(entry: &GeneratorEntry) -> FractionalInfo {
+    let (k, p) = (entry.k, entry.p);
     // Derive the generator equations from the numeric column specs so the
     // strings can never drift from the matrix construction (single source).
     let base_k = k - p;
@@ -258,13 +280,13 @@ pub fn fractional_factorial_info(k: usize, p: usize) -> Result<FractionalInfo, D
             format!("{derived}={word}")
         })
         .collect();
-    Ok(FractionalInfo {
+    FractionalInfo {
         k,
         p,
         resolution: entry.resolution,
         defining_relation: entry.defining_relation.to_string(),
         generators,
-    })
+    }
 }
 
 /// Factor letter for a 0-based column index (0 → 'A'). Valid for k ≤ 7 designs.
@@ -277,17 +299,51 @@ fn find_entry(k: usize, p: usize) -> Result<&'static GeneratorEntry, DoeError> {
     GENERATOR_TABLE
         .iter()
         .find(|e| e.k == k && e.p == p)
-        .ok_or_else(|| {
-            DoeError::UnsupportedDesign(format!(
-                "2^({k}-{p}) not in standard table; supported (k,p): \
-             (4,1),(5,1),(5,2),(6,1),(6,2),(6,3),(7,1),(7,2),(7,3)"
-            ))
+        .ok_or_else(|| DoeError::UnsupportedFraction {
+            k,
+            p,
+            supported: GENERATOR_TABLE.iter().map(|e| (e.k, e.p)).collect(),
         })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The refusal names the same table `standard_fractions` returns, so a
+    /// caller can recover from it without a second source.
+    #[test]
+    fn unsupported_fraction_lists_the_standard_table() {
+        let table: Vec<(usize, usize)> = standard_fractions().iter().map(|f| (f.k, f.p)).collect();
+        assert_eq!(
+            table,
+            vec![
+                (4, 1),
+                (5, 1),
+                (5, 2),
+                (6, 1),
+                (6, 2),
+                (6, 3),
+                (7, 1),
+                (7, 2),
+                (7, 3)
+            ]
+        );
+        assert_eq!(
+            fractional_factorial(4, 2).map(|d| d.run_count()),
+            Err(DoeError::UnsupportedFraction {
+                k: 4,
+                p: 2,
+                supported: table,
+            })
+        );
+        for info in standard_fractions() {
+            assert_eq!(
+                fractional_factorial_info(info.k, info.p).map(|i| i.defining_relation),
+                Ok(info.defining_relation)
+            );
+        }
+    }
 
     #[test]
     fn full_factorial_2k2_layout() {

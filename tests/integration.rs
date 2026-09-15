@@ -66,7 +66,7 @@ fn ccd_rsm_pipeline() {
     assert_eq!(model.factor_count, 2);
     assert!(model.r_squared >= 0.0 && model.r_squared <= 1.0 + 1e-9);
 
-    let steps = steepest_ascent(&model, 3, 0.5);
+    let steps = steepest_ascent(&model, 3, 0.5).unwrap();
     assert_eq!(steps.len(), 3);
     assert_eq!(steps[0].coded.len(), 2);
 }

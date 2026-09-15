@@ -92,7 +92,7 @@ pub struct LeastSquaresFit {
 ///
 /// # Errors
 ///
-/// [`DoeError::InsufficientResponses`] if `responses.len() != design.run_count()`;
+/// [`DoeError::ResponseCountMismatch`] if `responses.len() != design.run_count()`;
 /// [`DoeError::UnknownEffect`] if a name is not a factor or a `:`-joined
 /// combination of distinct factors; [`DoeError::NotTwoLevelCoded`] if any
 /// entry is not ±1 -- centre points belong in `doe_anova`, which tests them
@@ -124,16 +124,18 @@ pub fn fit_least_squares(
     let n = design.run_count();
     let k = design.factor_count();
     if responses.len() != n {
-        return Err(DoeError::InsufficientResponses {
+        return Err(DoeError::ResponseCountMismatch {
             expected: n,
             got: responses.len(),
         });
     }
     if n == 0 || k == 0 {
-        return Err(DoeError::UnsupportedDesign(format!(
-            "design has {n} runs and {k} factors; both must be non-zero"
-        )));
+        return Err(DoeError::EmptyDesign {
+            runs: n,
+            factors: k,
+        });
     }
+    design.check_shape()?;
     if let Some((run, factor, value)) = design.two_level_violation() {
         return Err(DoeError::NotTwoLevelCoded { run, factor, value });
     }
@@ -143,9 +145,13 @@ pub fn fit_least_squares(
         .map(|name| resolve_term(name, &design.factor_names))
         .collect::<Result<_, _>>()?;
 
+    // One degree of freedom goes to the mean; the terms need one each.
     let p = terms.len() + 1;
     if p > n {
-        return Err(DoeError::OverSpecifiedModel { terms: p, runs: n });
+        return Err(DoeError::OverSpecifiedModel {
+            terms: terms.len(),
+            runs: n,
+        });
     }
 
     // Model matrix: intercept, then one product column per term.
@@ -166,34 +172,31 @@ pub fn fit_least_squares(
     let xt = x.transpose();
     let xtx = xt
         .mul_mat(&x)
-        .map_err(|e| DoeError::MatrixError(e.to_string()))?;
+        .expect("X' is p x n and X is n x p by construction");
 
     // Linear dependence among the columns means the coefficients are not
     // identifiable; name the pair (or the constant column) rather than
     // returning a matrix error.
     if let Some((i, j)) = dependent_columns(&xtx, n) {
-        let name = |c: usize| {
-            if c == 0 {
-                "I".to_string()
-            } else {
-                effect_names[c - 1].to_string()
-            }
+        // Column 0 is the mean. It goes second, as `I`, the place every other
+        // path in the crate puts it -- a caller reads `second == "I"` as "this
+        // term is constant over the runs".
+        let term = |c: usize| effect_names[c - 1].to_string();
+        let (first, second) = if i == 0 {
+            (term(j), "I".to_string())
+        } else {
+            (term(i), term(j))
         };
-        return Err(DoeError::AliasedEffects {
-            first: name(i),
-            second: name(j),
-        });
+        return Err(DoeError::AliasedEffects { first, second });
     }
 
-    let xtx_inv = xtx
-        .inverse()
-        .map_err(|e| DoeError::MatrixError(e.to_string()))?;
+    let xtx_inv = xtx.inverse().map_err(|_| DoeError::SingularModel)?;
     let xty = xt
         .mul_vec(responses)
-        .map_err(|e| DoeError::MatrixError(e.to_string()))?;
+        .expect("X' has n columns and there are n responses, checked above");
     let beta = xtx_inv
         .mul_vec(&xty)
-        .map_err(|e| DoeError::MatrixError(e.to_string()))?;
+        .expect("(X'X)^-1 is p x p and X'y has p entries by construction");
 
     let fitted: Vec<f64> = rows
         .iter()
@@ -273,7 +276,7 @@ pub fn fit_least_squares(
 /// or a factor named twice in one term.
 fn resolve_term(name: &str, factor_names: &[String]) -> Result<Vec<usize>, DoeError> {
     let unknown = || DoeError::UnknownEffect {
-        name: name.to_string(),
+        effect: name.to_string(),
     };
     let mut cols = Vec::new();
     for part in name.split(':') {
@@ -318,6 +321,32 @@ mod tests {
     use crate::analysis::anova::doe_anova;
     use crate::analysis::effects::estimate_effects;
     use crate::design::factorial::{fractional_factorial, full_factorial};
+
+    /// A 2^3 with the four runs at C = -1 left out: C is constant over the runs
+    /// kept. The mean goes second, so the message says what happened.
+    #[test]
+    fn a_factor_with_one_level_left_is_aliased_with_the_mean() {
+        let full = full_factorial(3).unwrap();
+        let kept: Vec<Vec<f64>> = full.data.into_iter().filter(|r| r[2] > 0.0).collect();
+        let y: Vec<f64> = (0..kept.len()).map(|i| 50.0 + 0.3 * i as f64).collect();
+        let design = DesignMatrix {
+            data: kept,
+            factor_names: full.factor_names,
+        };
+        let err = fit_least_squares(&design, &y, &["A", "B", "C"]).map(|f| f.intercept);
+        assert_eq!(
+            err,
+            Err(DoeError::AliasedEffects {
+                first: "C".into(),
+                second: "I".into(),
+            })
+        );
+        let message = err.expect_err("refused").to_string();
+        assert!(
+            message.contains("aliased with the overall mean"),
+            "{message}"
+        );
+    }
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9 * (1.0 + a.abs().max(b.abs()))
@@ -480,18 +509,6 @@ mod tests {
     }
 
     #[test]
-    fn refuses_a_constant_contrast_over_the_runs_kept() {
-        let mut design = full_factorial(2).unwrap();
-        // Keep only the runs with A = +1.
-        design.data.retain(|row| row[0] > 0.0);
-        let err = fit_least_squares(&design, &[1.0, 2.0], &["A"]).unwrap_err();
-        assert!(
-            matches!(&err, DoeError::AliasedEffects { first, second } if first == "I" && second == "A"),
-            "{err:?}"
-        );
-    }
-
-    #[test]
     fn rejects_unknown_terms_centre_points_and_overspecified_models() {
         let design = full_factorial(2).unwrap();
         let y = vec![1.0, 2.0, 3.0, 4.0];
@@ -505,7 +522,9 @@ mod tests {
         ));
         assert!(matches!(
             fit_least_squares(&design, &y, &["A", "B", "A:B", "A:B"]),
-            Err(DoeError::OverSpecifiedModel { terms: 5, runs: 4 })
+            // Four terms need four degrees of freedom; four runs leave three
+            // after the mean. `terms` counts the terms, not the mean.
+            Err(DoeError::OverSpecifiedModel { terms: 4, runs: 4 })
         ));
         let mut centred = design.clone();
         centred.data.push(vec![0.0, 0.0]);
@@ -515,7 +534,7 @@ mod tests {
         ));
         assert!(matches!(
             fit_least_squares(&design, &[1.0, 2.0], &["A"]),
-            Err(DoeError::InsufficientResponses {
+            Err(DoeError::ResponseCountMismatch {
                 expected: 4,
                 got: 2
             })

@@ -163,7 +163,7 @@ pub(crate) fn contrast_effects(
     let k = design.factor_count();
 
     if responses.len() != n {
-        return Err(DoeError::InsufficientResponses {
+        return Err(DoeError::ResponseCountMismatch {
             expected: n,
             got: responses.len(),
         });
@@ -173,10 +173,12 @@ pub(crate) fn contrast_effects(
     // reachable: `DesignMatrix` has public fields and the WebAssembly entry
     // points build one straight from caller JSON, so `[]` arrives here.
     if n == 0 || k == 0 {
-        return Err(DoeError::UnsupportedDesign(format!(
-            "design has {n} runs and {k} factors; both must be non-zero"
-        )));
+        return Err(DoeError::EmptyDesign {
+            runs: n,
+            factors: k,
+        });
     }
+    design.check_shape()?;
 
     // The contrast for a term is the product of its factor columns. That
     // product estimates an effect only when every column is ±1: a centre point
@@ -190,9 +192,12 @@ pub(crate) fn contrast_effects(
 
     // Asking for no terms at all used to return the main effects anyway.
     if max_order == 0 {
-        return Err(DoeError::UnsupportedDesign(
-            "max_order must be at least 1 (main effects)".to_string(),
-        ));
+        return Err(DoeError::ParameterOutOfRange {
+            parameter: "max_order",
+            min: 1,
+            max: None,
+            got: 0,
+        });
     }
 
     // Collect terms to estimate
@@ -674,7 +679,10 @@ mod tests {
         };
         assert!(matches!(
             estimate_effects(&empty, &[], 2),
-            Err(DoeError::UnsupportedDesign(_))
+            Err(DoeError::EmptyDesign {
+                runs: 0,
+                factors: 0
+            })
         ));
 
         let no_factors = DesignMatrix {
@@ -683,7 +691,10 @@ mod tests {
         };
         assert!(matches!(
             estimate_effects(&no_factors, &[1.0, 2.0], 2),
-            Err(DoeError::UnsupportedDesign(_))
+            Err(DoeError::EmptyDesign {
+                runs: 2,
+                factors: 0
+            })
         ));
     }
 

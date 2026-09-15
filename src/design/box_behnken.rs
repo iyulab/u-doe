@@ -43,9 +43,12 @@ pub fn box_behnken(k: usize, n_center: usize) -> Result<DesignMatrix, DoeError> 
         });
     }
     if n_center == 0 {
-        return Err(DoeError::InvalidSpecification(
-            "n_center must be at least 1".to_string(),
-        ));
+        return Err(DoeError::ParameterOutOfRange {
+            parameter: "n_center",
+            min: 1,
+            max: None,
+            got: 0,
+        });
     }
 
     let pairs = bib_pairs(k);

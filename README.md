@@ -48,7 +48,7 @@ use u_doe::analysis::rsm::{fit_rsm, steepest_ascent};
 let design = ccd(2, AlphaType::Rotatable, 3).unwrap();
 let responses = vec![/* measured values */];
 // let model = fit_rsm(&design, &responses).unwrap();
-// let path = steepest_ascent(&model, 5, 0.5);
+// let path = steepest_ascent(&model, 5, 0.5).unwrap();
 ```
 
 ### Multi-response Desirability
@@ -144,11 +144,56 @@ const design = full_factorial(3); // 2^3 = 8 runs
 > directly, not `JSON.stringify(...)` strings. A string argument is rejected with a
 > descriptive error naming the offending parameter.
 
+### Errors
+
+Every function throws an `Error` whose `message` is readable text and which
+carries a `code` naming the reason, next to the values behind it — so a program
+can explain a refusal in its own words and point at what to change, without
+parsing the message:
+
+```javascript
+try {
+  fit_least_squares(design, responses, names, ['A', 'B', 'C', 'D', 'E', 'F', 'G']);
+} catch (err) {
+  if (err.code === 'over_specified_model') {
+    // err.terms === 7, err.runs === 7: seven terms need seven degrees of
+    // freedom, and seven runs leave six after the mean.
+  } else if (err.code === 'aliased_effects' && err.second === 'I') {
+    // err.first has one level left over the runs kept.
+  }
+}
+```
+
+| `code` | Fields | Meaning |
+|---|---|---|
+| `invalid_factor_count` | `min`, `max`, `got` | Factor count outside the generator's range |
+| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `n_center`, `max_order` or the lattice degree `m` out of range |
+| `unsupported_fraction` | `k`, `p`, `supported` (`[[k, p], ...]`) | 2^(k-p) not in the standard table — see `standard_fractions()` |
+| `unknown_array` | `array`, `supported` | No Taguchi array of that name |
+| `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
+| `malformed_input` | `parameter` | An argument of the wrong shape or type, or a JSON string |
+| `empty_design` | `runs`, `factors` | No runs or no factors |
+| `design_shape_mismatch` | `run`, `expected`, `got` | A run whose length differs from the number of factor names |
+| `response_count_mismatch` | `expected`, `got` | Not one response per run (per spec, for `desirability`) |
+| `unknown_effect` | `effect` | An effect name that is not factor names joined with `":"` |
+| `not_two_level_coded` | `run`, `factor`, `value` | An entry other than `-1`/`+1` where the analysis needs two levels |
+| `aliased_effects` | `first`, `second` | Two terms share a contrast column; `second` is `"I"` when `first` is constant (one level left) |
+| `partially_aliased_effects` | `first`, `second` | Two terms' contrasts are correlated; `second` is `"I"` when the runs are unbalanced |
+| `over_specified_model` | `terms`, `runs` | More terms than the `runs - 1` degrees of freedom (`terms` excludes the mean) |
+| `singular_model` | — | The runs do not support the model (e.g. a quadratic fit on a two-level design) |
+| `coefficient_count_mismatch` | `factors`, `expected`, `got` | `steepest_ascent` coefficients not of a quadratic model in that many factors |
+| `too_few_replicates` | `run`, `needed`, `got` | `signal_to_noise`: a run with too few measurements for the goal |
+| `non_positive_response` | `run`, `value` | `signal_to_noise` `LargerIsBetter`: a response ≤ 0 |
+| `empty_responses` | — | `signal_to_noise` with no runs |
+
+A field that has no value is `null` in results too (`curvature`, `pure_error`,
+`lenth`, `p_value`), never a missing key.
+
 ### Functions
 
 #### `full_factorial(k) -> DesignMatrix`
 
-Generate a 2^k full factorial design (k = 1..7).
+Generate a 2^k full factorial design (k = 2..7).
 
 **Output:**
 ```json
@@ -158,6 +203,10 @@ Generate a 2^k full factorial design (k = 1..7).
 #### `fractional_factorial(k, p) -> DesignMatrix`
 
 Generate a 2^(k-p) fractional factorial design (k = 4..7, p = 1..3).
+
+#### `standard_fractions() -> [FractionalInfo]`
+
+Every fraction `fractional_factorial` can build, in ascending `(k, p)` order, each in the `fractional_factorial_info` shape below. Offer these instead of copying the table or trying each `(k, p)`.
 
 #### `fractional_factorial_info(k, p) -> FractionalInfo`
 

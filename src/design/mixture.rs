@@ -65,9 +65,12 @@ pub fn simplex_lattice(q: usize, m: usize) -> Result<DesignMatrix, DoeError> {
         // A degree of 0 divides by zero and yields a design matrix of NaN,
         // which serialises to null and reaches the caller looking structurally
         // valid. Reject it rather than returning a design that means nothing.
-        return Err(DoeError::UnsupportedDesign(format!(
-            "simplex lattice requires degree m in 1..={MAX_DEGREE}, got {m}"
-        )));
+        return Err(DoeError::ParameterOutOfRange {
+            parameter: "m",
+            min: 1,
+            max: Some(MAX_DEGREE),
+            got: m,
+        });
     }
     let mut rows: Vec<Vec<f64>> = Vec::new();
     let mut point = vec![0usize; q];

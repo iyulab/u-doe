@@ -62,18 +62,18 @@ pub enum SnGoal {
 /// ```
 pub fn signal_to_noise(responses: &[Vec<f64>], goal: SnGoal) -> Result<Vec<f64>, DoeError> {
     if responses.is_empty() {
-        return Err(DoeError::InvalidSpecification(
-            "responses must not be empty".into(),
-        ));
+        return Err(DoeError::EmptyResponses);
     }
 
     let mut sn_values = Vec::with_capacity(responses.len());
 
     for (run_idx, run) in responses.iter().enumerate() {
         if run.is_empty() {
-            return Err(DoeError::InvalidSpecification(format!(
-                "run {run_idx}: no replicates provided"
-            )));
+            return Err(DoeError::TooFewReplicates {
+                run: run_idx,
+                needed: 1,
+                got: 0,
+            });
         }
 
         let r = run.len() as f64;
@@ -83,9 +83,10 @@ pub fn signal_to_noise(responses: &[Vec<f64>], goal: SnGoal) -> Result<Vec<f64>,
                 // Validate: all values must be strictly positive
                 for &y in run {
                     if y <= 0.0 {
-                        return Err(DoeError::InvalidSpecification(format!(
-                            "run {run_idx}: LargerIsBetter requires y > 0, got {y}"
-                        )));
+                        return Err(DoeError::NonPositiveResponse {
+                            run: run_idx,
+                            value: y,
+                        });
                     }
                 }
                 let mean_inv_sq: f64 = run.iter().map(|&y| 1.0 / (y * y)).sum::<f64>() / r;
@@ -99,10 +100,11 @@ pub fn signal_to_noise(responses: &[Vec<f64>], goal: SnGoal) -> Result<Vec<f64>,
 
             SnGoal::NominalIsBest => {
                 if run.len() < 2 {
-                    return Err(DoeError::InvalidSpecification(format!(
-                        "run {run_idx}: NominalIsBest requires >= 2 replicates, got {}",
-                        run.len()
-                    )));
+                    return Err(DoeError::TooFewReplicates {
+                        run: run_idx,
+                        needed: 2,
+                        got: run.len(),
+                    });
                 }
                 let mean = run.iter().sum::<f64>() / r;
                 let var = run.iter().map(|&y| (y - mean).powi(2)).sum::<f64>() / (r - 1.0);
@@ -148,7 +150,7 @@ pub struct SnFactorEffect {
 /// One [`SnFactorEffect`] per factor, in column order.
 ///
 /// # Errors
-/// [`DoeError::InsufficientResponses`] if `sn_values.len() != design.run_count()`.
+/// [`DoeError::ResponseCountMismatch`] if `sn_values.len() != design.run_count()`.
 ///
 /// [`taguchi_array`]: crate::design::taguchi::taguchi_array
 ///
@@ -170,7 +172,7 @@ pub fn sn_factor_effects(
 ) -> Result<Vec<SnFactorEffect>, DoeError> {
     let n_runs = design.run_count();
     if sn_values.len() != n_runs {
-        return Err(DoeError::InsufficientResponses {
+        return Err(DoeError::ResponseCountMismatch {
             expected: n_runs,
             got: sn_values.len(),
         });

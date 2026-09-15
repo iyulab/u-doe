@@ -77,9 +77,12 @@ pub fn ccd(k: usize, alpha_type: AlphaType, n_center: usize) -> Result<DesignMat
         });
     }
     if n_center == 0 {
-        return Err(DoeError::InvalidSpecification(
-            "n_center must be at least 1".to_string(),
-        ));
+        return Err(DoeError::ParameterOutOfRange {
+            parameter: "n_center",
+            min: 1,
+            max: None,
+            got: 0,
+        });
     }
 
     let alpha_val = match alpha_type {
