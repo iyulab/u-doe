@@ -836,8 +836,8 @@ struct DesirabilityResultDto {
 /// unrecognised goal; `invalid_desirability_limits` (with `index`, `goal`,
 /// `lower`, `target`, `upper`) if a spec's limits are not finite and ordered
 /// `lower < target` (Maximize), `target < upper` (Minimize) or
-/// `lower < target < upper` (Target); `invalid_desirability_parameter` (with
-/// `index`, `parameter`, `value`) if `s1` -- or `s2` for Target -- is not
+/// `lower < target < upper` (Target); `value_out_of_domain` (with
+/// `index`, `parameter`, `value`, `domain`) if `s1` -- or `s2` for Target -- is not
 /// positive, or `importance` is negative; `response_count_mismatch`,
 /// `empty_responses` or `no_weighted_response` for the lists as a whole.
 #[wasm_bindgen]
@@ -897,8 +897,14 @@ pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValu
 
 /// Compute the statistical power of a 2^(k-p) factorial design.
 ///
-/// Uses the normal approximation. Returns power in [0, 1], or 0.0 for invalid
-/// inputs (k=0, p≥k, n_replicates=0, effect_size≤0, sigma≤0).
+/// Uses the normal approximation. Returns power in [0, 1].
+///
+/// # Errors
+/// Throws an `Error` carrying `code`: `parameter_out_of_range` (with
+/// `parameter` `"k"`, `"p"` or `"n_replicates"`) for `k = 0`, `p >= k` or no
+/// replicates; `value_out_of_domain` (with `parameter`, `value`, `domain`)
+/// unless `effect_size` and `sigma` are positive and `alpha` is strictly
+/// between 0 and 1.
 ///
 /// # Arguments
 /// * `k` — total number of factors
@@ -915,8 +921,9 @@ pub fn two_level_factorial_power(
     effect_size: f64,
     sigma: f64,
     alpha: f64,
-) -> f64 {
+) -> Result<f64, JsValue> {
     crate::power::two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha)
+        .map_err(js_err)
 }
 
 // ── Wire-schema strictness tests ─────────────────────────────────────

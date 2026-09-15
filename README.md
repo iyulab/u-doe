@@ -93,11 +93,11 @@ for e in &effects {
 use u_doe::power::{two_level_factorial_power, required_replicates};
 
 // Power for a 2^3 full factorial, detecting effect of 2σ with α=0.05
-let power = two_level_factorial_power(3, 0, 2, 2.0, 1.0, 0.05);
+let power = two_level_factorial_power(3, 0, 2, 2.0, 1.0, 0.05).unwrap();
 println!("Power = {power:.3}");  // ~0.95 at n=2 replicates
 
 // Minimum replicates to achieve 80% power
-let n = required_replicates(3, 0, 2.0, 1.0, 0.05, 0.80, 10);
+let n = required_replicates(3, 0, 2.0, 1.0, 0.05, 0.80, 10).unwrap(); // None if 10 is not enough
 println!("Required replicates: {n}");
 ```
 
@@ -167,7 +167,7 @@ try {
 | `code` | Fields | Meaning |
 |---|---|---|
 | `invalid_factor_count` | `min`, `max`, `got` | Factor count outside the generator's range |
-| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `n_center`, `max_order` or the lattice degree `m` out of range |
+| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `n_center`, `max_order`, the lattice degree `m`, or power's `k`, `p`, `n_replicates` out of range |
 | `unsupported_fraction` | `k`, `p`, `supported` (`[[k, p], ...]`) | 2^(k-p) not in the standard table — see `standard_fractions()` |
 | `unknown_array` | `array`, `supported` | No Taguchi array of that name |
 | `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
@@ -186,7 +186,7 @@ try {
 | `non_positive_response` | `run`, `value` | `signal_to_noise` `LargerIsBetter`: a response ≤ 0 |
 | `empty_responses` | — | `signal_to_noise` with no runs, `desirability` with no specs |
 | `invalid_desirability_limits` | `index`, `goal`, `lower`, `target`, `upper` | A spec whose ramp has no width or runs backwards (see `desirability`) |
-| `invalid_desirability_parameter` | `index`, `parameter`, `value` | `s1`/`s2` not positive, or `importance` negative |
+| `value_out_of_domain` | `index` (or `null`), `parameter`, `value`, `domain` | A real value outside its meaning: `s1`/`s2` not positive, `importance` negative, `effect_size`/`sigma` not positive, `alpha` not in (0, 1) |
 | `no_weighted_response` | — | Every spec has `importance` 0 |
 
 A field that has no value is `null` in results too (`curvature`, `pure_error`,
@@ -377,6 +377,8 @@ Compute Derringer-Suich desirability for multiple responses.
 `overall` is the importance-weighted geometric mean D = (∏ dᵢ^rᵢ)^(1/Σrᵢ); with all weights at the default `1` this is the plain geometric mean.
 
 #### `two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha) -> f64`
+
+Throws `parameter_out_of_range` or `value_out_of_domain` for inputs that have no power to report (`k = 0`, `p >= k`, no replicates, a non-positive effect or σ, `alpha` outside (0, 1)) — until 0.13.0 these returned `0`.
 
 Compute statistical power of a 2^(k-p) factorial design. Returns power in [0, 1].
 

@@ -31,6 +31,8 @@
 
 use crate::error::DoeError;
 
+const POSITIVE: &str = "finite and greater than 0";
+
 /// Optimization goal for a single response.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "wasm", derive(serde::Serialize))]
@@ -76,7 +78,7 @@ impl ResponseSpec {
     /// are finite and `lower < target` (`Maximize`), `target < upper`
     /// (`Minimize`) or `lower < target < upper` (`Target`) -- a ramp of no width
     /// or running backwards makes d a step or a constant.
-    /// [`DoeError::InvalidDesirabilityParameter`] unless each exponent the goal
+    /// [`DoeError::ValueOutOfDomain`] unless each exponent the goal
     /// uses is finite and positive: `s = 0` makes every point of the ramp
     /// d = 1, and a negative `s` sends d above 1.
     ///
@@ -114,17 +116,19 @@ impl ResponseSpec {
         }
         let exponent_ok = |s: f64| s.is_finite() && s > 0.0;
         if !exponent_ok(s1) {
-            return Err(DoeError::InvalidDesirabilityParameter {
+            return Err(DoeError::ValueOutOfDomain {
                 index: None,
                 parameter: "s1",
                 value: s1,
+                domain: POSITIVE,
             });
         }
         if goal == GoalType::Target && !exponent_ok(s2) {
-            return Err(DoeError::InvalidDesirabilityParameter {
+            return Err(DoeError::ValueOutOfDomain {
                 index: None,
                 parameter: "s2",
                 value: s2,
+                domain: POSITIVE,
             });
         }
         Ok(Self {
@@ -200,7 +204,7 @@ impl ResponseSpec {
     /// out of the overall value.
     ///
     /// # Errors
-    /// [`DoeError::InvalidDesirabilityParameter`] unless `importance` is finite
+    /// [`DoeError::ValueOutOfDomain`] unless `importance` is finite
     /// and not negative.
     ///
     /// # Examples
@@ -214,10 +218,11 @@ impl ResponseSpec {
     /// ```
     pub fn with_importance(mut self, importance: f64) -> Result<Self, DoeError> {
         if !(importance.is_finite() && importance >= 0.0) {
-            return Err(DoeError::InvalidDesirabilityParameter {
+            return Err(DoeError::ValueOutOfDomain {
                 index: None,
                 parameter: "importance",
                 value: importance,
+                domain: "finite and not negative",
             });
         }
         self.importance = importance;
@@ -577,7 +582,7 @@ mod tests {
             assert!(
                 matches!(
                     ResponseSpec::maximize(0.0, 10.0, 10.0, s),
-                    Err(DoeError::InvalidDesirabilityParameter {
+                    Err(DoeError::ValueOutOfDomain {
                         parameter: "s1",
                         ..
                     })
@@ -587,7 +592,7 @@ mod tests {
             assert!(
                 matches!(
                     ResponseSpec::target(0.0, 5.0, 10.0, 1.0, s),
-                    Err(DoeError::InvalidDesirabilityParameter {
+                    Err(DoeError::ValueOutOfDomain {
                         parameter: "s2",
                         ..
                     })
@@ -599,7 +604,7 @@ mod tests {
             assert!(
                 matches!(
                     maximize(0.0, 10.0, 10.0, 1.0).with_importance(r),
-                    Err(DoeError::InvalidDesirabilityParameter {
+                    Err(DoeError::ValueOutOfDomain {
                         parameter: "importance",
                         ..
                     })

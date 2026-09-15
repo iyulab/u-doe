@@ -30,13 +30,32 @@ pub struct RsmModel {
 impl RsmModel {
     /// Predict the response at coded factor levels `x`.
     ///
-    /// `x.len()` must equal `factor_count`.
-    pub fn predict(&self, x: &[f64]) -> f64 {
+    /// # Errors
+    /// [`DoeError::PointDimensionMismatch`] if `x.len() != factor_count`;
+    /// [`DoeError::CoefficientCountMismatch`] if `coefficients` is not the
+    /// length of a quadratic model in `factor_count` factors. The fields are
+    /// public, so a model need not have come from [`fit_rsm`]; either mismatch
+    /// used to be absorbed silently, predicting from part of the model.
+    pub fn predict(&self, x: &[f64]) -> Result<f64, DoeError> {
+        if x.len() != self.factor_count {
+            return Err(DoeError::PointDimensionMismatch {
+                expected: self.factor_count,
+                got: x.len(),
+            });
+        }
         let row = model_row(x);
-        row.iter()
+        if self.coefficients.len() != row.len() {
+            return Err(DoeError::CoefficientCountMismatch {
+                factors: self.factor_count,
+                expected: row.len(),
+                got: self.coefficients.len(),
+            });
+        }
+        Ok(row
+            .iter()
             .zip(self.coefficients.iter())
             .map(|(xi, bi)| xi * bi)
-            .sum()
+            .sum())
     }
 }
 
@@ -264,7 +283,7 @@ mod tests {
             40.8, 40.9, 41.0, 40.5, 40.7, // center points (5)
         ];
         let model = fit_rsm(&design, &responses).unwrap();
-        let pred_center = model.predict(&[0.0, 0.0]);
+        let pred_center = model.predict(&[0.0, 0.0]).unwrap();
         // Should be near mean of center points (~40.78)
         assert!((pred_center - 40.78).abs() < 1.0, "pred={pred_center}");
     }
@@ -279,14 +298,38 @@ mod tests {
     }
 
     #[test]
+    fn predict_refuses_a_point_or_model_of_the_wrong_size() {
+        let design = ccd(2, AlphaType::FaceCentered, 3).unwrap();
+        let n = design.run_count();
+        let responses: Vec<f64> = (0..n).map(|i| i as f64).collect();
+        let mut model = fit_rsm(&design, &responses).unwrap();
+        assert_eq!(
+            model.predict(&[0.5]),
+            Err(DoeError::PointDimensionMismatch {
+                expected: 2,
+                got: 1
+            })
+        );
+        model.coefficients.pop();
+        assert_eq!(
+            model.predict(&[0.5, 0.5]),
+            Err(DoeError::CoefficientCountMismatch {
+                factors: 2,
+                expected: 6,
+                got: 5
+            })
+        );
+    }
+
+    #[test]
     fn rsm_predict_consistency() {
         let design = ccd(2, AlphaType::FaceCentered, 1).unwrap();
         let n = design.run_count();
         let responses: Vec<f64> = (0..n).map(|i| (i as f64).powi(2)).collect();
         let model = fit_rsm(&design, &responses).unwrap();
         // Prediction should be finite for any coded input
-        assert!(model.predict(&[0.5, -0.5]).is_finite());
-        assert!(model.predict(&[-1.0, 1.0]).is_finite());
+        assert!(model.predict(&[0.5, -0.5]).unwrap().is_finite());
+        assert!(model.predict(&[-1.0, 1.0]).unwrap().is_finite());
     }
 
     #[test]

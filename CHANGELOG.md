@@ -23,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   responses are refused too), and `UnknownEffect { name }` is
   `UnknownEffect { effect }`. `DoeError::code()` returns the same `code` the
   WASM error carries.
-- **Breaking:** `analysis::rsm::steepest_ascent` returns a `Result`.
+- **Breaking:** `analysis::rsm::steepest_ascent` and `RsmModel::predict` return
+  a `Result`.
+- **Breaking:** `power::two_level_factorial_power` returns `Result<f64, _>`,
+  `power_curve` returns `Result<Vec<_>, _>`, and `required_replicates` returns
+  `Result<Option<usize>, _>` -- `None` when no replicate count up to
+  `max_replicates` reaches the target.
 - **Breaking:** `ResponseSpec` can only be built valid. Its fields are private
   (read them with `goal()`, `lower()`, `target_value()`, `upper()`, `s1()`,
   `s2()`, `importance()`); `ResponseSpec::new`, `maximize`, `minimize`,
@@ -49,14 +54,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   limits a goal uses must now be finite with `lower < target` (Maximize),
   `target < upper` (Minimize) or `lower < target < upper` (Target), the
   exponents it uses finite and positive, and `importance` finite and not
-  negative; otherwise `InvalidDesirabilityLimits` or
-  `InvalidDesirabilityParameter` (WASM: `invalid_desirability_limits` /
-  `invalid_desirability_parameter` with the spec's `index`).
+  negative; otherwise `InvalidDesirabilityLimits` or `ValueOutOfDomain`
+  (WASM: `invalid_desirability_limits` / `value_out_of_domain` with the spec's
+  `index`).
 - `overall_desirability` returned 0.0 for no specifications, a response count
   that did not match, or weights summing to zero -- indistinguishable from a
   design with a response out of range. These are now `EmptyResponses`,
   `ResponseCountMismatch` and `NoWeightedResponse`.
-
+- `power::two_level_factorial_power` returned 0.0 for inputs that have no power
+  to report (`k = 0`, `p >= k`, no replicates, a non-positive effect size or
+  sigma) and did not check `alpha` at all (`alpha = 2` gave power 1). It now
+  refuses them with `ParameterOutOfRange` or `ValueOutOfDomain`; the WASM
+  function throws instead of returning a number. Valid inputs give the same
+  values as before.
+- `2^(k-p)` in the power calculation was an integer shift, which overflows once
+  `k - p` reaches the width of `usize` -- 32 bits in WebAssembly, where the
+  shift was silently masked and the power computed for the wrong run count.
+- `power::required_replicates` returned `max_replicates` both when the target
+  power was first reached there and when it was not reached at all.
+- `RsmModel::predict` predicted from part of the model when the point or the
+  coefficient list had the wrong length. It now refuses both.
 - A run whose length differs from the number of factor names is refused
   (`DesignShapeMismatch`). It used to index past the row -- a panic, which a
   WASM caller receives as `RuntimeError: unreachable` -- or, for a short row of

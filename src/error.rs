@@ -81,6 +81,9 @@ pub enum DoeError {
         expected: usize,
         got: usize,
     },
+    /// A point given to a fitted model has a different number of coordinates
+    /// from the model's factors.
+    PointDimensionMismatch { expected: usize, got: usize },
     /// Lenth's method needs at least `needed` distinct contrasts.
     TooFewContrasts { needed: usize, got: usize },
     /// A coding range whose low end is not below its high end.
@@ -106,12 +109,15 @@ pub enum DoeError {
         target: f64,
         upper: f64,
     },
-    /// A desirability exponent (`s1`, `s2`) that is not finite and positive, or
-    /// an `importance` weight that is not finite and non-negative.
-    InvalidDesirabilityParameter {
+    /// A real-valued parameter outside the set of values it has a meaning for:
+    /// a desirability exponent or importance, an effect size, a standard
+    /// deviation, a significance level. `domain` says what the value must be.
+    /// `index` is the position of the element in its list, when there is one.
+    ValueOutOfDomain {
         index: Option<usize>,
         parameter: &'static str,
         value: f64,
+        domain: &'static str,
     },
     /// Every desirability specification has importance 0, so there is nothing
     /// to combine.
@@ -137,12 +143,16 @@ impl DoeError {
                 target,
                 upper,
             },
-            DoeError::InvalidDesirabilityParameter {
-                parameter, value, ..
-            } => DoeError::InvalidDesirabilityParameter {
+            DoeError::ValueOutOfDomain {
+                parameter,
+                value,
+                domain,
+                ..
+            } => DoeError::ValueOutOfDomain {
                 index: Some(index),
                 parameter,
                 value,
+                domain,
             },
             other => other,
         }
@@ -171,13 +181,14 @@ impl DoeError {
             DoeError::OverSpecifiedModel { .. } => "over_specified_model",
             DoeError::SingularModel => "singular_model",
             DoeError::CoefficientCountMismatch { .. } => "coefficient_count_mismatch",
+            DoeError::PointDimensionMismatch { .. } => "point_dimension_mismatch",
             DoeError::TooFewContrasts { .. } => "too_few_contrasts",
             DoeError::InvalidCodingRange { .. } => "invalid_coding_range",
             DoeError::EmptyResponses => "empty_responses",
             DoeError::TooFewReplicates { .. } => "too_few_replicates",
             DoeError::NonPositiveResponse { .. } => "non_positive_response",
             DoeError::InvalidDesirabilityLimits { .. } => "invalid_desirability_limits",
-            DoeError::InvalidDesirabilityParameter { .. } => "invalid_desirability_parameter",
+            DoeError::ValueOutOfDomain { .. } => "value_out_of_domain",
             DoeError::NoWeightedResponse => "no_weighted_response",
         }
     }
@@ -293,6 +304,10 @@ impl std::fmt::Display for DoeError {
                 f,
                 "a quadratic model in {factors} factors has {expected} coefficients, got {got}"
             ),
+            DoeError::PointDimensionMismatch { expected, got } => write!(
+                f,
+                "the model has {expected} factors but the point has {got} coordinates"
+            ),
             DoeError::TooFewContrasts { needed, got } => write!(
                 f,
                 "Lenth's method needs at least {needed} distinct contrasts, got {got}"
@@ -330,19 +345,15 @@ impl std::fmt::Display for DoeError {
                      {target}, upper {upper}: the ramp has no width or runs backwards"
                 )
             }
-            DoeError::InvalidDesirabilityParameter {
+            DoeError::ValueOutOfDomain {
                 index,
                 parameter,
                 value,
+                domain,
             } => {
                 if let Some(i) = index {
                     write!(f, "specs[{i}]: ")?;
                 }
-                let domain = if *parameter == "importance" {
-                    "finite and not negative"
-                } else {
-                    "finite and greater than 0"
-                };
                 write!(f, "{parameter} must be {domain}, got {value}")
             }
             DoeError::NoWeightedResponse => write!(
@@ -433,6 +444,10 @@ mod tests {
                 expected: 6,
                 got: 2,
             },
+            DoeError::PointDimensionMismatch {
+                expected: 2,
+                got: 3,
+            },
             DoeError::TooFewContrasts { needed: 3, got: 2 },
             DoeError::InvalidCodingRange {
                 low: 2.0,
@@ -455,10 +470,11 @@ mod tests {
                 target: 5.0,
                 upper: 0.0,
             },
-            DoeError::InvalidDesirabilityParameter {
+            DoeError::ValueOutOfDomain {
                 index: None,
                 parameter: "importance",
                 value: -1.0,
+                domain: "finite and not negative",
             },
             DoeError::NoWeightedResponse,
         ]
