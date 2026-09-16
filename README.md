@@ -351,8 +351,38 @@ Fit a second-order Response Surface Model via OLS.
 
 **Output:**
 ```json
-{ "coefficients": [10.0, 2.5, -1.3, 0.5, 0.8, -0.2], "r_squared": 0.95, "factor_count": 2 }
+{
+  "coefficients": [10.0, 2.5, -1.3, 0.5, 0.8, -0.2],
+  "terms": ["Intercept", "A", "B", "A^2", "B^2", "A:B"],
+  "r_squared": 0.95,
+  "factor_count": 2
+}
 ```
+
+`terms[i]` names `coefficients[i]`, so a caller that displays or evaluates them
+never has to know the layout. Interactions are factor names joined with `:`, as
+everywhere else in this crate.
+
+#### `rsm_predict(coefficients, factor_count, coded) -> Float64Array`
+
+Evaluate a fitted model at coded factor levels. `coded` is a flat
+`n x factor_count` row-major array; the result is `n` predicted responses, one
+per row. A single prediction is one row.
+
+Batched rather than one point at a time on purpose: a contour or a grid search
+evaluates thousands of points, and a scalar entry point invites a loop across
+the WebAssembly boundary.
+
+```js
+// k = 2, y = 10 + 2*x1 - 3*x2 - 1.5*x1^2 + 0.5*x2^2 + 4*x1*x2
+rsm_predict([10, 2, -3, -1.5, 0.5, 4], 2, Float64Array.from([0.5, -1]))
+// -> Float64Array [12.125]
+```
+
+Errors: `point_dimension_mismatch` when `coded.length` is not a multiple of
+`factor_count`, `coefficient_count_mismatch` when `coefficients` is not a
+quadratic model in that many factors, `parameter_out_of_range` for
+`factor_count: 0`.
 
 #### `steepest_ascent(coefficients, factor_count, n_steps, step_size) -> AscentResult`
 

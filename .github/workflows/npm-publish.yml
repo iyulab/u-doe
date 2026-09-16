@@ -121,6 +121,19 @@ jobs:
           ok(e instanceof Error && e.code === 'empty_design', `fit_rsm([]): ${e}`)
           ok(typeof m.full_factorial(2).run_count === 'number', 'the module must still answer after a refusal')
 
+          // A fitted surface can be evaluated, and says what its coefficients are.
+          // The oracle is worked by hand: k=2, coded (0.5, -1),
+          // row [1, 0.5, -1, 0.25, 1, -0.5] . [10, 2, -3, -1.5, 0.5, 4] = 12.125
+          const rsmC = [10, 2, -3, -1.5, 0.5, 4]
+          const p1 = m.rsm_predict(rsmC, 2, Float64Array.from([0.5, -1]))
+          ok(p1.length === 1 && Math.abs(p1[0] - 12.125) < 1e-12, `rsm_predict: ${p1}`)
+          const pN = m.rsm_predict(rsmC, 2, Float64Array.from([0.5, -1, 0, 0, 1, 1]))
+          ok(pN.length === 3 && Math.abs(pN[1] - 10) < 1e-12, `rsm_predict batched: ${pN}`)
+          e = refusal(() => m.rsm_predict(rsmC, 2, Float64Array.from([0.5])))
+          ok(e.code === 'point_dimension_mismatch', `ragged coded: ${e.code}`)
+          e = refusal(() => m.rsm_predict([1, 2, 3], 2, Float64Array.from([0, 0])))
+          ok(e.code === 'coefficient_count_mismatch', `wrong coefficient count: ${e.code}`)
+
           // An absent value is null, with its key present.
           const f2 = m.full_factorial(2)
           const sat = m.doe_anova(f2.data, [1, 2, 3, 5], f2.factor_names, ['A', 'B', 'A:B'])

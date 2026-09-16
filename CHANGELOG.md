@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`rsm_predict(coefficients, factor_count, coded)`** (WASM) -- evaluates a
+  fitted response surface at coded factor levels, batched: `coded` is a flat
+  `n x factor_count` row-major array and the result is `n` responses. The crate
+  has always had `RsmModel::predict`; only the binding was missing, so a JS
+  consumer wanting a contour, an optimum or a confirmation-run estimate had to
+  rebuild the polynomial and copy a term order that is private to the crate.
+
+- **`fit_rsm`'s result carries `terms`** -- what each coefficient is, in the
+  same order: `["Intercept", "A", "B", "A^2", "B^2", "A:B"]`. Without it the
+  order was knowable only from the crate's source, so a caller displaying
+  coefficients copied a layout it could not check against the value it was
+  handed.
+
+- **`analysis::rsm::model_terms`** (Rust) -- the same list, built beside the
+  function that builds the model row so the labels and the order they describe
+  cannot drift apart.
+
 ### Fixed
 
 - **`doe_anova` takes every effect name `estimate_effects` returns.** It

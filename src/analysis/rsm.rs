@@ -246,10 +246,123 @@ fn model_row(x: &[f64]) -> Vec<f64> {
     row
 }
 
+/// Names the model's terms, in the order [`RsmModel::coefficients`] holds them.
+///
+/// ```text
+/// ["Intercept", "A", "B", "A^2", "B^2", "A:B"]
+/// ```
+///
+/// Interactions are factor names joined with `:`, as everywhere else in this
+/// crate. The list is built here, beside `model_row`, so the labels and the
+/// order they describe cannot drift apart -- which is the whole reason a caller
+/// would rather be told the order than copy it.
+///
+/// # Examples
+/// ```
+/// use u_doe::analysis::rsm::model_terms;
+///
+/// let names = ["Temp".to_string(), "Time".to_string()];
+/// assert_eq!(
+///     model_terms(&names),
+///     ["Intercept", "Temp", "Time", "Temp^2", "Time^2", "Temp:Time"]
+/// );
+/// ```
+pub fn model_terms(factor_names: &[String]) -> Vec<String> {
+    let k = factor_names.len();
+    let mut terms = Vec::with_capacity(1 + k + k + k * (k - 1) / 2);
+    terms.push("Intercept".to_string());
+    terms.extend(factor_names.iter().cloned());
+    terms.extend(factor_names.iter().map(|n| format!("{n}^2")));
+    for i in 0..k {
+        for j in (i + 1)..k {
+            terms.push(format!("{}:{}", factor_names[i], factor_names[j]));
+        }
+    }
+    terms
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::design::ccd::{ccd, AlphaType};
+
+    /// The labels describe the row, so they are built from the same shape.
+    /// A term added to `model_row` without a name here would be a coefficient
+    /// nothing can identify.
+    #[test]
+    fn every_model_term_has_a_name_and_they_are_in_the_row_order() {
+        for k in 1..=5 {
+            let names: Vec<String> = (0..k).map(|i| format!("F{i}")).collect();
+            let x: Vec<f64> = (0..k).map(|i| (i + 2) as f64).collect();
+            let terms = model_terms(&names);
+            assert_eq!(terms.len(), model_row(&x).len(), "k = {k}");
+        }
+
+        // The order itself, spelled out at k = 3.
+        let names = ["A".to_string(), "B".to_string(), "C".to_string()];
+        assert_eq!(
+            model_terms(&names),
+            [
+                "Intercept",
+                "A",
+                "B",
+                "C",
+                "A^2",
+                "B^2",
+                "C^2",
+                "A:B",
+                "A:C",
+                "B:C"
+            ]
+        );
+
+        // And the row really is laid out that way: a one-hot point puts its
+        // value where the name says.
+        let row = model_row(&[2.0, 3.0, 5.0]);
+        assert_eq!(row, [1.0, 2.0, 3.0, 5.0, 4.0, 9.0, 25.0, 6.0, 10.0, 15.0]);
+
+        // The case the doc example shows, asserted here too: this machine's
+        // application-control policy blocks a varying subset of doc-test
+        // binaries, so the example alone is not evidence locally.
+        let named = ["Temp".to_string(), "Time".to_string()];
+        assert_eq!(
+            model_terms(&named),
+            ["Intercept", "Temp", "Time", "Temp^2", "Time^2", "Temp:Time"]
+        );
+    }
+
+    /// The oracle a consumer sent with the request, worked by hand:
+    /// k = 2, coefficients [10, 2, -3, -1.5, 0.5, 4], coded (0.5, -1)
+    /// row = [1, 0.5, -1, 0.25, 1, -0.5]
+    /// y   = 10 + 1 + 3 - 0.375 + 0.5 - 2 = 12.125
+    #[test]
+    fn predict_matches_a_hand_worked_point() {
+        let model = RsmModel {
+            coefficients: vec![10.0, 2.0, -3.0, -1.5, 0.5, 4.0],
+            r_squared: 0.0,
+            factor_count: 2,
+        };
+        let y = model.predict(&[0.5, -1.0]).expect("k = 2, 6 coefficients");
+        assert!((y - 12.125).abs() < 1e-12, "y = {y}");
+
+        // The same value reached through the names, which is how a consumer
+        // that never learns the order would check it.
+        let names = ["A".to_string(), "B".to_string()];
+        let terms = model_terms(&names);
+        let by_name: std::collections::HashMap<&str, f64> = terms
+            .iter()
+            .map(String::as_str)
+            .zip(model.coefficients.iter().copied())
+            .collect();
+        let (x1, x2) = (0.5_f64, -1.0_f64);
+        let manual = by_name["Intercept"]
+            + by_name["A"] * x1
+            + by_name["B"] * x2
+            + by_name["A^2"] * x1 * x1
+            + by_name["B^2"] * x2 * x2
+            + by_name["A:B"] * x1 * x2;
+        assert!((manual - y).abs() < 1e-12, "{manual} vs {y}");
+    }
 
     #[test]
     fn rsm_fit_k2_coefficient_count() {

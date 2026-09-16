@@ -707,6 +707,12 @@ pub fn estimate_effects(
 #[derive(Serialize)]
 struct RsmModelDto {
     coefficients: Vec<f64>,
+    /// What each coefficient is, in the same order.
+    ///
+    /// Without it the order is knowable only from the crate's source, so a
+    /// caller who displays coefficients -- or rebuilds the polynomial -- copies
+    /// a layout it cannot check against the value it was handed.
+    terms: Vec<String>,
     r_squared: f64,
     factor_count: usize,
 }
@@ -717,8 +723,9 @@ struct RsmModelDto {
 /// `responses`: flat array of response values, one per run.
 /// `factor_names`: native array of factor name strings.
 ///
-/// Returns `{ coefficients: [f64], r_squared: f64, factor_count: usize }`.
-/// Coefficient order: [intercept, linear..., quadratic..., interactions...].
+/// Returns `{ coefficients: [f64], terms: [string], r_squared: f64,
+/// factor_count: usize }`. `terms[i]` names `coefficients[i]`:
+/// `["Intercept", "A", "B", "A^2", "B^2", "A:B"]`.
 ///
 /// # Errors
 /// Throws an `Error` carrying `code` if dimensions do not match, an argument has the
@@ -737,11 +744,64 @@ pub fn fit_rsm(
     let model = crate::analysis::rsm::fit_rsm(&design, responses).map_err(js_err)?;
 
     let dto = RsmModelDto {
+        terms: crate::analysis::rsm::model_terms(&design.factor_names),
         coefficients: model.coefficients,
         r_squared: model.r_squared,
         factor_count: model.factor_count,
     };
     to_js(&dto)
+}
+
+/// Evaluate a fitted RSM model at coded factor levels.
+///
+/// `coefficients`: native array of model coefficients (from `fit_rsm`).
+/// `factor_count`: number of factors in the model.
+/// `coded`: flat `n x factor_count` row-major array of coded points.
+///
+/// Returns a `Float64Array` of `n` predicted responses, one per row.
+///
+/// Batched rather than one point at a time on purpose: a contour or a grid
+/// search evaluates thousands of points, and a scalar entry point invites a
+/// loop across the WebAssembly boundary. A single prediction is one row.
+///
+/// # Errors
+/// Throws an `Error` carrying `code`: `point_dimension_mismatch` if `coded`'s
+/// length is not a multiple of `factor_count`, `coefficient_count_mismatch` if
+/// `coefficients` is not a quadratic model in that many factors,
+/// `parameter_out_of_range` if `factor_count` is 0.
+#[wasm_bindgen]
+pub fn rsm_predict(
+    coefficients: JsValue,
+    factor_count: usize,
+    coded: &[f64],
+) -> Result<Vec<f64>, JsValue> {
+    let coefficients: Vec<f64> = from_js(coefficients, "coefficients")?;
+
+    if factor_count == 0 {
+        return Err(js_err(crate::error::DoeError::ParameterOutOfRange {
+            parameter: "factor_count",
+            min: 1,
+            max: None,
+            got: 0,
+        }));
+    }
+    if coded.len() % factor_count != 0 {
+        return Err(js_err(crate::error::DoeError::PointDimensionMismatch {
+            expected: factor_count,
+            got: coded.len() % factor_count,
+        }));
+    }
+
+    let model = crate::analysis::rsm::RsmModel {
+        coefficients,
+        r_squared: 0.0, // not used by predict
+        factor_count,
+    };
+
+    coded
+        .chunks(factor_count)
+        .map(|point| model.predict(point).map_err(js_err))
+        .collect()
 }
 
 #[derive(Serialize)]
