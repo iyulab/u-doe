@@ -355,9 +355,268 @@ pub fn overall_desirability(specs: &[ResponseSpec], responses: &[f64]) -> Result
     Ok((weighted_log_sum / sum_r).exp())
 }
 
+/// The outcome of a search for the most desirable candidate.
+///
+/// Two cases, not one with a sentinel, because an overall desirability of 0 is
+/// **not an optimum**: D is a weighted geometric mean, so one response that
+/// misses its limits everywhere makes every candidate score exactly 0. A search
+/// that kept the maximum would then return whichever candidate it scored first
+/// -- a setting that satisfies no specification, presented as the recommended
+/// one. The type makes that unrepresentable.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DesirabilityOptimum {
+    /// A candidate whose overall desirability is above 0.
+    Best {
+        /// Position of the candidate in the input.
+        index: usize,
+        /// Its overall desirability D.
+        overall: f64,
+        /// Each response's individual desirability dᵢ, in specification order.
+        individual: Vec<f64>,
+    },
+    /// No candidate scores above 0.
+    Infeasible {
+        /// Specifications whose desirability is 0 at *every* candidate, in
+        /// specification order. Empty when each response is met somewhere but
+        /// never all at once -- the distinction that tells a user whether to
+        /// move one response's limits or to relax the trade-off.
+        ///
+        /// A specification with importance 0 is left out of D, so it is never
+        /// listed here however it scores.
+        unreachable: Vec<usize>,
+    },
+}
+
+/// Find the candidate with the highest overall desirability.
+///
+/// `candidates` is one response vector per candidate, each in specification
+/// order. Ties go to the first candidate that is strictly best.
+///
+/// Scoring one vector is [`overall_desirability`]; this is the search over
+/// settings that Derringer & Suich's method ends in, and the reason it lives
+/// here rather than in each caller is [`DesirabilityOptimum`]'s doc comment.
+///
+/// # Errors
+/// [`DoeError::EmptyResponses`] if `specs` or `candidates` is empty;
+/// [`DoeError::ResponseCountMismatch`] if a candidate is not one response per
+/// specification; [`DoeError::ValueOutOfDomain`] if a response is not finite --
+/// a NaN is not a score, and letting it fall through as d = 0 would report a
+/// reachable response as unreachable; [`DoeError::NoWeightedResponse`] if every
+/// importance is 0.
+///
+/// # Examples
+/// ```
+/// use u_doe::optimization::desirability::{
+///     optimize_desirability, DesirabilityOptimum, ResponseSpec,
+/// };
+///
+/// // Yield to maximise over [0, 100]; the third candidate is the best of three.
+/// let specs = vec![ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0).unwrap()];
+/// let found = optimize_desirability(&specs, &[vec![10.0], vec![50.0], vec![90.0]]).unwrap();
+/// assert!(matches!(found, DesirabilityOptimum::Best { index: 2, .. }));
+///
+/// // The same candidates against a target no one reaches: not an optimum.
+/// let specs = vec![ResponseSpec::maximize(200.0, 300.0, 300.0, 1.0).unwrap()];
+/// let found = optimize_desirability(&specs, &[vec![10.0], vec![50.0], vec![90.0]]).unwrap();
+/// assert_eq!(found, DesirabilityOptimum::Infeasible { unreachable: vec![0] });
+/// ```
+pub fn optimize_desirability(
+    specs: &[ResponseSpec],
+    candidates: &[Vec<f64>],
+) -> Result<DesirabilityOptimum, DoeError> {
+    if specs.is_empty() || candidates.is_empty() {
+        return Err(DoeError::EmptyResponses);
+    }
+    for candidate in candidates {
+        if candidate.len() != specs.len() {
+            return Err(DoeError::ResponseCountMismatch {
+                expected: specs.len(),
+                got: candidate.len(),
+            });
+        }
+        for (index, &y) in candidate.iter().enumerate() {
+            if !y.is_finite() {
+                return Err(DoeError::ValueOutOfDomain {
+                    index: Some(index),
+                    parameter: "response",
+                    value: y,
+                    domain: "finite",
+                });
+            }
+        }
+    }
+
+    // `overall_desirability` refuses an all-zero weighting; ask it once so the
+    // search does not report an infeasible region for a weighting problem.
+    let mut best: Option<(usize, f64)> = None;
+    for (index, candidate) in candidates.iter().enumerate() {
+        let overall = overall_desirability(specs, candidate)?;
+        if best.is_none_or(|(_, b)| overall > b) {
+            best = Some((index, overall));
+        }
+    }
+    let (index, overall) = best.expect("candidates is not empty");
+
+    if overall > 0.0 {
+        return Ok(DesirabilityOptimum::Best {
+            index,
+            overall,
+            individual: specs
+                .iter()
+                .zip(candidates[index].iter())
+                .map(|(spec, &y)| spec.desirability(y))
+                .collect(),
+        });
+    }
+
+    // Nothing scores. Name the responses that are the reason -- those that are
+    // 0 everywhere -- and say nothing when there are none, which means each is
+    // satisfiable alone and the candidates never satisfy them together.
+    let unreachable = specs
+        .iter()
+        .enumerate()
+        .filter(|(_, spec)| spec.importance() > 0.0)
+        .filter(|(i, spec)| {
+            candidates
+                .iter()
+                .all(|candidate| spec.desirability(candidate[*i]) <= 0.0)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    Ok(DesirabilityOptimum::Infeasible { unreachable })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── the search, and what it refuses to call an optimum ──────────────────
+
+    /// The reporter's first row: Yield can never reach its lower limit, so
+    /// every candidate scores 0. A loop keeping the maximum returns candidate
+    /// 0 and calls it optimal; this says which response is the reason.
+    #[test]
+    fn a_response_that_is_never_met_is_named_rather_than_averaged_away() {
+        let specs = vec![ResponseSpec::maximize(200.0, 300.0, 300.0, 1.0).expect("ordered")];
+        let candidates = vec![vec![10.0], vec![50.0], vec![90.0]];
+        for c in &candidates {
+            assert_eq!(overall_desirability(&specs, c).expect("valid"), 0.0);
+        }
+        assert_eq!(
+            optimize_desirability(&specs, &candidates).expect("valid"),
+            DesirabilityOptimum::Infeasible {
+                unreachable: vec![0]
+            }
+        );
+    }
+
+    /// The reporter's second row: each response is met somewhere, never both at
+    /// once. `unreachable` is empty, which is the distinction that tells a user
+    /// to relax the trade-off rather than move a limit.
+    #[test]
+    fn responses_met_apart_but_never_together_name_no_single_reason() {
+        let specs = vec![
+            ResponseSpec::maximize(60.0, 95.0, 95.0, 1.0).expect("ordered"),
+            ResponseSpec::minimize(4.0, 4.0, 8.0, 1.0).expect("ordered"),
+        ];
+        // Yield meets its limits only at run 3, Cost only at run 1.
+        let candidates = vec![vec![10.0, 5.0], vec![50.0, 10.0], vec![90.0, 15.0]];
+        assert_eq!(
+            optimize_desirability(&specs, &candidates).expect("valid"),
+            DesirabilityOptimum::Infeasible {
+                unreachable: vec![]
+            }
+        );
+    }
+
+    #[test]
+    fn the_best_candidate_is_the_first_strictly_best_one() {
+        let specs = vec![ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0).expect("ordered")];
+        let candidates = vec![vec![10.0], vec![90.0], vec![90.0], vec![50.0]];
+        let found = optimize_desirability(&specs, &candidates).expect("valid");
+        match found {
+            DesirabilityOptimum::Best {
+                index,
+                overall,
+                individual,
+            } => {
+                assert_eq!(index, 1, "a tie goes to the first");
+                assert!((overall - 0.9).abs() < 1e-12, "D = {overall}");
+                assert_eq!(individual.len(), 1);
+                assert!((individual[0] - 0.9).abs() < 1e-12);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// A response left out of D cannot be the reason D is 0.
+    #[test]
+    fn a_response_with_no_importance_is_never_the_reason() {
+        let specs = vec![
+            ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0)
+                .expect("ordered")
+                .with_importance(1.0)
+                .expect("positive"),
+            ResponseSpec::maximize(200.0, 300.0, 300.0, 1.0)
+                .expect("ordered")
+                .with_importance(0.0)
+                .expect("zero is allowed"),
+        ];
+        // The second response is unreachable, but weightless: D comes from the
+        // first alone and is positive.
+        let found = optimize_desirability(&specs, &[vec![50.0, 10.0]]).expect("valid");
+        assert!(
+            matches!(found, DesirabilityOptimum::Best { index: 0, .. }),
+            "{found:?}"
+        );
+
+        // And when nothing scores, it is still not named.
+        let specs = vec![
+            ResponseSpec::maximize(200.0, 300.0, 300.0, 1.0).expect("ordered"),
+            ResponseSpec::maximize(200.0, 300.0, 300.0, 1.0)
+                .expect("ordered")
+                .with_importance(0.0)
+                .expect("zero is allowed"),
+        ];
+        assert_eq!(
+            optimize_desirability(&specs, &[vec![10.0, 10.0]]).expect("valid"),
+            DesirabilityOptimum::Infeasible {
+                unreachable: vec![0]
+            }
+        );
+    }
+
+    #[test]
+    fn the_search_refuses_what_it_cannot_score() {
+        let specs = vec![ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0).expect("ordered")];
+        assert!(matches!(
+            optimize_desirability(&specs, &[]),
+            Err(DoeError::EmptyResponses)
+        ));
+        assert!(matches!(
+            optimize_desirability(&[], &[vec![1.0]]),
+            Err(DoeError::EmptyResponses)
+        ));
+        assert!(matches!(
+            optimize_desirability(&specs, &[vec![1.0, 2.0]]),
+            Err(DoeError::ResponseCountMismatch {
+                expected: 1,
+                got: 2
+            })
+        ));
+        for bad in [f64::NAN, f64::INFINITY] {
+            assert!(
+                matches!(
+                    optimize_desirability(&specs, &[vec![50.0], vec![bad]]),
+                    Err(DoeError::ValueOutOfDomain {
+                        parameter: "response",
+                        ..
+                    })
+                ),
+                "{bad} must not be scored"
+            );
+        }
+    }
 
     fn maximize(lower: f64, target: f64, upper: f64, s: f64) -> ResponseSpec {
         ResponseSpec::maximize(lower, target, upper, s).expect("valid maximize spec")

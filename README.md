@@ -408,6 +408,46 @@ Compute Derringer-Suich desirability for multiple responses.
 
 `overall` is the importance-weighted geometric mean D = (∏ dᵢ^rᵢ)^(1/Σrᵢ); with all weights at the default `1` this is the plain geometric mean.
 
+#### `optimize_desirability(specs, candidates) -> { kind: "best" | "infeasible", ... }`
+
+Find the candidate setting with the highest overall desirability. `candidates`
+is a flat `n x specs.length` row-major array -- one response vector per
+candidate, each in specification order.
+
+```js
+// Yield to maximise over [0, 100]; the third candidate wins.
+optimize_desirability(
+  [{ goal: "Maximize", lower: 0, target: 100, upper: 100, s1: 1, s2: 1 }],
+  Float64Array.from([10, 50, 90]),
+)
+// -> { kind: "best", index: 2, overall: 0.9, individual: [0.9] }
+
+// The same candidates against a target none of them reaches.
+optimize_desirability(
+  [{ goal: "Maximize", lower: 200, target: 300, upper: 300, s1: 1, s2: 1 }],
+  Float64Array.from([10, 50, 90]),
+)
+// -> { kind: "infeasible", unreachable: [0] }
+```
+
+**An overall desirability of 0 is not an optimum.** D is a weighted geometric
+mean, so a single response that misses its limits at every candidate makes every
+candidate score exactly 0; a loop keeping the maximum then returns whichever
+candidate it scored first -- a setting that satisfies no specification,
+presented as the recommended one. The two result shapes make that
+unrepresentable.
+
+`unreachable` names the responses that score 0 at every candidate. It is **empty
+when each response is met somewhere but never all at once**, which is what tells
+a user to relax the trade-off rather than move a limit. A specification with
+importance 0 is left out of D and is never listed.
+
+Ties go to the first strictly best candidate. Errors: everything `desirability`
+throws, plus `empty_responses` for no candidates, `response_count_mismatch` when
+`candidates.length` is not a multiple of `specs.length`, and
+`value_out_of_domain` (`parameter: "response"`) for a response that is not
+finite.
+
 #### `two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha) -> f64`
 
 Throws `parameter_out_of_range` or `value_out_of_domain` for inputs that have no power to report (`k = 0`, `p >= k`, no replicates, a non-positive effect or σ, `alpha` outside (0, 1)) — until 0.13.0 these returned `0`.

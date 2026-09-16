@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`optimize_desirability(specs, candidates)`** (WASM and Rust) -- the search
+  over candidate settings that Derringer & Suich's method ends in. The crate
+  scored one response vector and stopped there, so every consumer wrote the loop
+  itself, and the loop has a trap the scores do not point out.
+
+  **An overall desirability of 0 is not an optimum.** D is a weighted geometric
+  mean, so one response that misses its limits at every candidate makes every
+  candidate score exactly 0; a loop keeping the maximum then returns whichever
+  candidate it scored first -- a setting that satisfies no specification,
+  presented as the recommended one. The result is therefore two shapes rather
+  than one with a sentinel:
+
+  ```js
+  { kind: "best", index, overall, individual }
+  { kind: "infeasible", unreachable: [number] }
+  ```
+
+  `unreachable` names the responses that score 0 everywhere, and is empty when
+  each response is met somewhere but never all at once -- the distinction
+  between moving a limit and relaxing the trade-off. Ties go to the first
+  strictly best candidate; a response that is not finite is refused rather than
+  scored as 0.
+
 - **`rsm_predict(coefficients, factor_count, coded)`** (WASM) -- evaluates a
   fitted response surface at coded factor levels, batched: `coded` is a flat
   `n x factor_count` row-major array and the result is `n` responses. The crate

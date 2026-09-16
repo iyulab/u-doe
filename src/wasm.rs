@@ -881,34 +881,17 @@ struct DesirabilityResultDto {
     overall: f64,
 }
 
-/// Compute Derringer-Suich desirability for multiple responses.
+/// Parses the `specs` argument every desirability entry point takes.
 ///
-/// `specs`: native array of response specification objects, each:
-///   `{ goal: "Maximize"|"Minimize"|"Target", lower, target, upper, s1, s2, importance? }`
-///   where `s1`/`s2` are curve-shape exponents and the optional `importance`
-///   (default 1.0) is the Derringer-Suich weight rᵢ for the overall aggregation.
-/// `responses`: flat array of observed response values (one per spec).
-///
-/// Returns `{ individual: [f64], overall: f64 }` where `overall` is the
-/// importance-weighted geometric mean (∏ dᵢ^rᵢ)^(1/Σrᵢ).
-///
-/// # Errors
-/// Throws an `Error` carrying `code`: `malformed_input` if `specs` has the
-/// wrong shape (native JS values, not JSON strings); `unknown_option` for an
-/// unrecognised goal; `invalid_desirability_limits` (with `index`, `goal`,
-/// `lower`, `target`, `upper`) if a spec's limits are not finite and ordered
-/// `lower < target` (Maximize), `target < upper` (Minimize) or
-/// `lower < target < upper` (Target); `value_out_of_domain` (with
-/// `index`, `parameter`, `value`, `domain`) if `s1` -- or `s2` for Target -- is not
-/// positive, or `importance` is negative; `response_count_mismatch`,
-/// `empty_responses` or `no_weighted_response` for the lists as a whole.
-#[wasm_bindgen]
-pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValue> {
-    use crate::optimization::desirability::{overall_desirability, GoalType, ResponseSpec};
+/// One parser so the two exports cannot disagree about what a specification is
+/// or where a refusal points.
+fn parse_response_specs(
+    specs: JsValue,
+) -> Result<Vec<crate::optimization::desirability::ResponseSpec>, JsValue> {
+    use crate::optimization::desirability::{GoalType, ResponseSpec};
 
     let inputs: Vec<ResponseSpecInput> = from_js(specs, "specs")?;
-
-    let specs: Vec<ResponseSpec> = inputs
+    inputs
         .into_iter()
         .enumerate()
         .map(|(index, input)| {
@@ -935,7 +918,35 @@ pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValu
             .and_then(|spec| spec.with_importance(input.importance))
             .map_err(|e| js_err(e.at_index(index)))
         })
-        .collect::<Result<_, JsValue>>()?;
+        .collect()
+}
+
+/// Compute Derringer-Suich desirability for multiple responses.
+///
+/// `specs`: native array of response specification objects, each:
+///   `{ goal: "Maximize"|"Minimize"|"Target", lower, target, upper, s1, s2, importance? }`
+///   where `s1`/`s2` are curve-shape exponents and the optional `importance`
+///   (default 1.0) is the Derringer-Suich weight rᵢ for the overall aggregation.
+/// `responses`: flat array of observed response values (one per spec).
+///
+/// Returns `{ individual: [f64], overall: f64 }` where `overall` is the
+/// importance-weighted geometric mean (∏ dᵢ^rᵢ)^(1/Σrᵢ).
+///
+/// # Errors
+/// Throws an `Error` carrying `code`: `malformed_input` if `specs` has the
+/// wrong shape (native JS values, not JSON strings); `unknown_option` for an
+/// unrecognised goal; `invalid_desirability_limits` (with `index`, `goal`,
+/// `lower`, `target`, `upper`) if a spec's limits are not finite and ordered
+/// `lower < target` (Maximize), `target < upper` (Minimize) or
+/// `lower < target < upper` (Target); `value_out_of_domain` (with
+/// `index`, `parameter`, `value`, `domain`) if `s1` -- or `s2` for Target -- is not
+/// positive, or `importance` is negative; `response_count_mismatch`,
+/// `empty_responses` or `no_weighted_response` for the lists as a whole.
+#[wasm_bindgen]
+pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValue> {
+    use crate::optimization::desirability::overall_desirability;
+
+    let specs = parse_response_specs(specs)?;
 
     // Checks the list as a whole -- empty, one response per spec, some weight
     // -- before any individual value is computed.
@@ -949,6 +960,86 @@ pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValu
     let dto = DesirabilityResultDto {
         individual,
         overall,
+    };
+    to_js(&dto)
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+enum DesirabilityOptimumDto {
+    Best {
+        index: usize,
+        overall: f64,
+        individual: Vec<f64>,
+    },
+    Infeasible {
+        unreachable: Vec<usize>,
+    },
+}
+
+/// Find the candidate setting with the highest overall desirability.
+///
+/// `specs`: native array of response specifications, as `desirability` takes.
+/// `candidates`: flat `n x specs.length` row-major array -- one response vector
+/// per candidate, each in specification order.
+///
+/// Returns either
+/// `{ kind: "best", index, overall, individual }` or
+/// `{ kind: "infeasible", unreachable: [number] }`.
+///
+/// Two shapes rather than one with a sentinel, because **an overall
+/// desirability of 0 is not an optimum**: D is a weighted geometric mean, so a
+/// single response that misses its limits at every candidate makes every
+/// candidate score exactly 0. A loop keeping the maximum then returns whichever
+/// candidate it scored first -- a setting that satisfies no specification,
+/// presented as the recommended one.
+///
+/// `unreachable` names the responses that score 0 at every candidate. It is
+/// empty when each response is met somewhere but never all at once, which is
+/// what tells a user to relax the trade-off rather than move a limit. A
+/// specification with importance 0 is left out of D and is never listed.
+///
+/// Ties go to the first strictly best candidate.
+///
+/// # Errors
+/// Throws an `Error` carrying `code`: everything `desirability` throws for the
+/// specifications themselves, plus `empty_responses` for no candidates,
+/// `response_count_mismatch` if `candidates.length` is not a multiple of
+/// `specs.length`, and `value_out_of_domain` (`parameter: "response"`) for a
+/// response that is not finite -- a NaN is not a score, and letting it through
+/// as 0 would report a reachable response as unreachable.
+#[wasm_bindgen]
+pub fn optimize_desirability(specs: JsValue, candidates: &[f64]) -> Result<JsValue, JsValue> {
+    use crate::optimization::desirability::{optimize_desirability, DesirabilityOptimum};
+
+    let specs = parse_response_specs(specs)?;
+    if specs.is_empty() || candidates.is_empty() {
+        return Err(js_err(crate::error::DoeError::EmptyResponses));
+    }
+    if candidates.len() % specs.len() != 0 {
+        return Err(js_err(crate::error::DoeError::ResponseCountMismatch {
+            expected: specs.len(),
+            got: candidates.len() % specs.len(),
+        }));
+    }
+
+    let rows: Vec<Vec<f64>> = candidates
+        .chunks(specs.len())
+        .map(<[f64]>::to_vec)
+        .collect();
+    let dto = match optimize_desirability(&specs, &rows).map_err(js_err)? {
+        DesirabilityOptimum::Best {
+            index,
+            overall,
+            individual,
+        } => DesirabilityOptimumDto::Best {
+            index,
+            overall,
+            individual,
+        },
+        DesirabilityOptimum::Infeasible { unreachable } => {
+            DesirabilityOptimumDto::Infeasible { unreachable }
+        }
     };
     to_js(&dto)
 }
