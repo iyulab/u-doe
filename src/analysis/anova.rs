@@ -117,7 +117,9 @@ pub struct DoeAnovaResult {
 ///
 /// Returns `Err` if `responses.len() != design.run_count()`;
 /// [`DoeError::UnknownEffect`] if an entry in `effect_names` does not match
-/// any estimable effect (main effects and two-factor interactions);
+/// any estimable effect -- a factor name, or factor names joined with `:` up to
+/// the number of factors the design has, the same names
+/// [`crate::analysis::effects::estimate_effects`] returns;
 /// [`DoeError::NotTwoLevelCoded`] if a run is neither two-level coded (every
 /// factor `-1` or `+1`) nor a centre point (every factor `0`) -- axial and
 /// three-level designs belong in [`crate::analysis::rsm::fit_rsm`];
@@ -180,15 +182,28 @@ pub fn doe_anova(
     // Unchecked: only the requested terms have to be orthogonal, and they are
     // checked below -- a 12-run Plackett-Burman's interactions are correlated
     // with its main effects, which does not stop an ANOVA of the main effects.
-    let all_effects = crate::analysis::effects::contrast_effects(&factorial, &factorial_y, 2)
-        .map_err(|e| match e {
-            DoeError::NotTwoLevelCoded { run, factor, value } => DoeError::NotTwoLevelCoded {
-                run: factorial_runs[run],
-                factor,
-                value,
-            },
-            other => other,
-        })?;
+    // The order to estimate up to is the one the caller asked for, read off the
+    // names themselves. A fixed 2 here meant `estimate_effects(.., 3)` produced
+    // `A:B:C` and this function then refused it as unknown -- the crate's own
+    // output rejected by the crate's own input. `build_terms` clamps an order
+    // above the factor count, so an over-long name falls through to the
+    // `UnknownEffect` below rather than growing the term list.
+    let requested_order = effect_names
+        .iter()
+        .map(|name| name.split(':').count())
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    let all_effects =
+        crate::analysis::effects::contrast_effects(&factorial, &factorial_y, requested_order)
+            .map_err(|e| match e {
+                DoeError::NotTwoLevelCoded { run, factor, value } => DoeError::NotTwoLevelCoded {
+                    run: factorial_runs[run],
+                    factor,
+                    value,
+                },
+                other => other,
+            })?;
 
     // Grand mean and total SS, over every run
     let grand_mean = responses.iter().sum::<f64>() / n as f64;
@@ -632,6 +647,99 @@ mod tests {
     fn anova_insufficient_responses() {
         let design = full_factorial(2).unwrap();
         assert!(doe_anova(&design, &[1.0, 2.0], &["A"]).is_err());
+    }
+
+    /// The names `estimate_effects` produces are the names this function takes.
+    ///
+    /// The order to estimate up to used to be a literal 2 here, so a caller who
+    /// asked `estimate_effects` for three-factor interactions got `A:B:C` back
+    /// and then had it refused as unknown -- the crate's own output rejected by
+    /// the crate's own input, with a message naming exactly the form it refused.
+    #[test]
+    fn anova_takes_every_name_estimate_effects_returns() {
+        // A replicated 2^3, so order 3 leaves residual degrees of freedom.
+        let corners = [
+            [-1.0, -1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [-1.0, -1.0, 1.0],
+            [1.0, -1.0, 1.0],
+            [-1.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0],
+        ];
+        let mut rows = Vec::new();
+        for c in corners {
+            rows.push(c.to_vec());
+            rows.push(c.to_vec());
+        }
+        let design = DesignMatrix {
+            factor_names: vec!["A".into(), "B".into(), "C".into()],
+            data: rows,
+        };
+        // The reporter's responses, each corner replicated with the same +2
+        // offset so the replication contributes pure error without cancelling
+        // any contrast. (An alternating offset zeroes A:B:C exactly, which is
+        // how the first draft of this test passed for the wrong reason.)
+        let y = [
+            60.0, 62.0, 72.0, 74.0, 54.0, 56.0, 68.0, 70.0, 52.0, 54.0, 83.0, 85.0, 45.0, 47.0,
+            80.0, 82.0,
+        ];
+
+        for order in 1..=3 {
+            let est = crate::analysis::effects::estimate_effects(&design, &y, order)
+                .unwrap_or_else(|e| panic!("estimate_effects at order {order}: {e}"));
+            let names: Vec<&str> = est.iter().map(|e| e.name.as_str()).collect();
+            let anova = doe_anova(&design, &y, &names)
+                .unwrap_or_else(|e| panic!("doe_anova at order {order}: {e}"));
+            assert_eq!(
+                anova.effects.len(),
+                names.len(),
+                "order {order}: every requested term must appear"
+            );
+            for (row, name) in anova.effects.iter().zip(&names) {
+                assert_eq!(&row.name, name, "order {order}");
+            }
+        }
+
+        // The three-factor term specifically, on its own.
+        let only_abc = doe_anova(&design, &y, &["A:B:C"]).expect("A:B:C is estimable here");
+        assert_eq!(only_abc.effects.len(), 1);
+        assert_eq!(only_abc.effects[0].name, "A:B:C");
+        assert!(
+            only_abc.effects[0].sum_of_squares > 0.0,
+            "SS = {}",
+            only_abc.effects[0].sum_of_squares
+        );
+    }
+
+    /// Widening the order must not widen what counts as a name: a factor that
+    /// is not in the design is still unknown, however many parts the name has.
+    #[test]
+    fn anova_still_refuses_a_name_no_factor_answers_to() {
+        let design = DesignMatrix {
+            factor_names: vec!["A".into(), "B".into(), "C".into()],
+            data: vec![
+                vec![-1.0, -1.0, -1.0],
+                vec![1.0, -1.0, -1.0],
+                vec![-1.0, 1.0, -1.0],
+                vec![1.0, 1.0, -1.0],
+                vec![-1.0, -1.0, 1.0],
+                vec![1.0, -1.0, 1.0],
+                vec![-1.0, 1.0, 1.0],
+                vec![1.0, 1.0, 1.0],
+            ],
+        };
+        let y = [60.0, 72.0, 54.0, 68.0, 52.0, 83.0, 45.0, 80.0];
+        for bad in ["Z", "A:Z", "A:B:Z", "A:B:C:D"] {
+            assert!(
+                matches!(
+                    doe_anova(&design, &y, &[bad]),
+                    Err(crate::error::DoeError::UnknownEffect { .. })
+                ),
+                "{bad} must stay unknown"
+            );
+        }
     }
 
     #[test]

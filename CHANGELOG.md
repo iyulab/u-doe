@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`doe_anova` takes every effect name `estimate_effects` returns.** It
+  estimated contrasts up to order 2 whatever was asked for, so a caller who
+  requested three-factor interactions got `A:B:C` back from `estimate_effects`
+  and had it refused here as `unknown_effect` -- with a message naming
+  `:`-joined factor names as exactly the accepted form. Every `2^3` and larger
+  full factorial has such a term, so the natural pipeline (estimate effects at
+  an order, then ANOVA on those effects) ended in an error at order 3.
+
+  The order is now read off the requested names. An over-long or misspelled
+  name is still `unknown_effect`; `fit_least_squares` already accepted any
+  order and is unchanged.
+
 ## [0.13.0] - 2026-09-15
 
 ### Changed
