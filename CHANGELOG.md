@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`fractional_factorial_info` / `standard_fractions` reported a resolution
+  that contradicted the defining relation shipped in the same record.** The
+  half fractions of six and seven factors have one word of length six and
+  seven, so they are Resolution VI and VII; both were reported as `"V"`.
+
+  Resolution is the length of the shortest word in the defining relation, and
+  the two were stored side by side, so they could disagree -- and did, for two
+  of the nine standard fractions. The value is now read off the relation
+  itself, which makes the disagreement unrepresentable rather than merely
+  corrected. Understating a resolution is the conservative direction for a
+  warning but the wrong one for choosing a design: a VI presented as V looks
+  weaker than it is and argues for more runs than the design needs.
+
+### Changed
+
+- **`Resolution` carries the word length instead of a fixed set of names.** It
+  was an enum stopping at `V`, which is why VI and VII had nowhere to go. It is
+  now a comparable value with `III` through `VII` as named constants, an
+  `order()` accessor for the word length, and no ceiling -- so `resolution >
+  Resolution::V` is a question that can be asked, and a longer relation reports
+  what it is. `Display` and the JSON `resolution` field are unchanged in shape:
+  a Roman numeral string.
+
 ## [0.14.0] - 2026-09-16
 
 ### Added

@@ -515,8 +515,10 @@ pub fn fractional_factorial(k: usize, p: usize) -> Result<JsValue, JsValue> {
 /// actually emits — lets consumers derive the alias structure without pairing
 /// the design with an external published table.
 ///
-/// Returns `{ k: usize, p: usize, resolution: "III"|"IV"|"V",
-/// defining_relation: str, generators: [str] }` —
+/// Returns `{ k: usize, p: usize, resolution: str, defining_relation: str,
+/// generators: [str] }`, where `resolution` is the Roman numeral for the length
+/// of the shortest word in `defining_relation` — `"III"` through `"VII"` across
+/// the standard table, so the two never disagree —
 /// e.g. `{ k: 7, p: 3, resolution: "IV",
 /// defining_relation: "I=ABCE=BCDF=ACDG=ADEF=BDEG=ABFG=CEFG",
 /// generators: ["E=ABC", "F=BCD", "G=ACD"] }`.
@@ -1111,5 +1113,37 @@ mod dto_strictness_tests {
                 "generators": ["E=ABC", "F=BCD", "G=ACD"]
             })
         );
+    }
+
+    #[test]
+    fn fractional_info_dto_resolution_agrees_with_its_own_relation() {
+        // The wire record carries both the resolution and the relation it is
+        // read from, so a consumer can see them disagree. It must not: the
+        // half fractions of six and seven factors are VI and VII, not V.
+        let wire: Vec<(usize, usize, String, String)> =
+            crate::design::factorial::standard_fractions()
+                .into_iter()
+                .map(super::FractionalInfoDto::from)
+                .map(|dto| (dto.k, dto.p, dto.resolution, dto.defining_relation))
+                .collect();
+        for (k, p, resolution, relation) in &wire {
+            let shortest = relation
+                .split('=')
+                .skip(1)
+                .map(str::len)
+                .min()
+                .expect("a relation names at least one word");
+            let numeral = ["", "I", "II", "III", "IV", "V", "VI", "VII"][shortest];
+            assert_eq!(
+                resolution, numeral,
+                "2^({k}-{p}) sends {resolution} beside {relation}"
+            );
+        }
+        assert!(wire
+            .iter()
+            .any(|(k, p, r, _)| (*k, *p) == (6, 1) && r == "VI"));
+        assert!(wire
+            .iter()
+            .any(|(k, p, r, _)| (*k, *p) == (7, 1) && r == "VII"));
     }
 }

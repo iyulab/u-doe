@@ -14,31 +14,98 @@
 //!
 //! # Resolution
 //!
+//! The length of the shortest word in the defining relation, so it is read off
+//! that relation rather than stored beside it:
+//!
 //! - `III`: no main effect aliased with another main effect, but 2FI aliased with main effects
 //! - `IV`:  main effects clean; 2FI aliased with other 2FI
 //! - `V`:   main effects and all 2FI estimable without aliasing
+//! - `VI` and above: the aliasing is weaker still — a half fraction of `k`
+//!   factors has one word of length `k`, so 2^(6−1) is VI and 2^(7−1) is VII
+//!
+//! Reference: Box, Hunter & Hunter (2005), *Statistics for Experimenters*, 2nd ed., Section 6.5
 
 use super::DesignMatrix;
 use crate::error::DoeError;
 
-/// Resolution of a fractional factorial design.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Resolution {
-    /// Resolution III: main effects aliased with two-factor interactions.
-    III,
-    /// Resolution IV: two-factor interactions aliased with each other.
-    IV,
-    /// Resolution V: main effects and all 2FI estimable.
-    V,
+/// Resolution of a fractional factorial design: the length of the shortest
+/// word in its defining relation.
+///
+/// Carries the word length itself rather than a fixed set of names, so a
+/// fraction whose shortest word is longer than five is reported as what it is
+/// instead of being flattened onto the highest name available. Ordered, so a
+/// caller can ask whether a design clears a bar:
+///
+/// ```
+/// use u_doe::design::factorial::{fractional_factorial_info, Resolution};
+/// let info = fractional_factorial_info(6, 1).unwrap();
+/// assert_eq!(info.resolution, Resolution::VI);
+/// assert!(info.resolution > Resolution::V);
+/// assert_eq!(info.resolution.order(), 6);
+/// assert_eq!(info.resolution.to_string(), "VI");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Resolution(usize);
+
+impl Resolution {
+    /// Main effects aliased with two-factor interactions.
+    pub const III: Resolution = Resolution(3);
+    /// Main effects clean; two-factor interactions aliased with each other.
+    pub const IV: Resolution = Resolution(4);
+    /// Main effects and all two-factor interactions estimable.
+    pub const V: Resolution = Resolution(5);
+    /// Shortest word of length six.
+    pub const VI: Resolution = Resolution(6);
+    /// Shortest word of length seven.
+    pub const VII: Resolution = Resolution(7);
+
+    /// The shortest word length this resolution stands for (`III` → 3).
+    #[must_use]
+    pub const fn order(self) -> usize {
+        self.0
+    }
+
+    /// Read the resolution off a defining relation in compact notation
+    /// (`"I=ABD=ACE=BCDE"` → `III`).
+    ///
+    /// `None` when the relation names no word — it is the identity alone, or
+    /// a word is empty.
+    fn from_defining_relation(relation: &str) -> Option<Resolution> {
+        relation
+            .split('=')
+            .skip(1) // the leading "I"
+            .map(str::len)
+            .filter(|&len| len > 0)
+            .min()
+            .map(Resolution)
+    }
 }
 
 impl core::fmt::Display for Resolution {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(match self {
-            Resolution::III => "III",
-            Resolution::IV => "IV",
-            Resolution::V => "V",
-        })
+        const NUMERALS: [(usize, &str); 13] = [
+            (1000, "M"),
+            (900, "CM"),
+            (500, "D"),
+            (400, "CD"),
+            (100, "C"),
+            (90, "XC"),
+            (50, "L"),
+            (40, "XL"),
+            (10, "X"),
+            (9, "IX"),
+            (5, "V"),
+            (4, "IV"),
+            (1, "I"),
+        ];
+        let mut remaining = self.0;
+        for (value, symbol) in NUMERALS {
+            while remaining >= value {
+                f.write_str(symbol)?;
+                remaining -= value;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -60,14 +127,15 @@ pub struct FractionalInfo {
     pub generators: Vec<String>,
 }
 
-// (k, p, base_generators[generator_index][source_col_indices], resolution, defining_relation)
+// (k, p, base_generators[generator_index][source_col_indices], defining_relation)
 // Generator column is the product of the listed base columns.
 // Source: Montgomery (2019), Table 8.14
 struct GeneratorEntry {
     k: usize,
     p: usize,
     generators: &'static [&'static [usize]], // each slice = product of base cols at those indices
-    resolution: Resolution,
+    /// Resolution is not stored — it is read off this relation by
+    /// [`Resolution::from_defining_relation`], so the two cannot disagree.
     defining_relation: &'static str,
 }
 
@@ -77,7 +145,6 @@ const GENERATOR_TABLE: &[GeneratorEntry] = &[
         k: 4,
         p: 1,
         generators: &[&[0, 1, 2]],
-        resolution: Resolution::IV,
         defining_relation: "I=ABCD",
     },
     // 2^(5-1): 16 runs, E = ABCD → Resolution V
@@ -85,7 +152,6 @@ const GENERATOR_TABLE: &[GeneratorEntry] = &[
         k: 5,
         p: 1,
         generators: &[&[0, 1, 2, 3]],
-        resolution: Resolution::V,
         defining_relation: "I=ABCDE",
     },
     // 2^(5-2): 8 runs, D=AB, E=AC → Resolution III
@@ -93,15 +159,13 @@ const GENERATOR_TABLE: &[GeneratorEntry] = &[
         k: 5,
         p: 2,
         generators: &[&[0, 1], &[0, 2]],
-        resolution: Resolution::III,
         defining_relation: "I=ABD=ACE=BCDE",
     },
-    // 2^(6-1): 32 runs, F = ABCDE → Resolution VI (treated as V in enum)
+    // 2^(6-1): 32 runs, F = ABCDE → Resolution VI
     GeneratorEntry {
         k: 6,
         p: 1,
         generators: &[&[0, 1, 2, 3, 4]],
-        resolution: Resolution::V,
         defining_relation: "I=ABCDEF",
     },
     // 2^(6-2): 16 runs, E=ABC, F=BCD → Resolution IV
@@ -109,7 +173,6 @@ const GENERATOR_TABLE: &[GeneratorEntry] = &[
         k: 6,
         p: 2,
         generators: &[&[0, 1, 2], &[1, 2, 3]],
-        resolution: Resolution::IV,
         defining_relation: "I=ABCE=BCDF=ADEF",
     },
     // 2^(6-3): 8 runs, D=AB, E=AC, F=BC → Resolution III
@@ -118,15 +181,13 @@ const GENERATOR_TABLE: &[GeneratorEntry] = &[
         k: 6,
         p: 3,
         generators: &[&[0, 1], &[0, 2], &[1, 2]],
-        resolution: Resolution::III,
         defining_relation: "I=ABD=ACE=BCF=BCDE=ACDF=ABEF=DEF",
     },
-    // 2^(7-1): 64 runs, G = ABCDEF → Resolution VII (treated as V)
+    // 2^(7-1): 64 runs, G = ABCDEF → Resolution VII
     GeneratorEntry {
         k: 7,
         p: 1,
         generators: &[&[0, 1, 2, 3, 4, 5]],
-        resolution: Resolution::V,
         defining_relation: "I=ABCDEFG",
     },
     // 2^(7-2): 32 runs, F=ABCD, G=ABDE → Resolution IV
@@ -134,7 +195,6 @@ const GENERATOR_TABLE: &[GeneratorEntry] = &[
         k: 7,
         p: 2,
         generators: &[&[0, 1, 2, 3], &[0, 1, 3, 4]],
-        resolution: Resolution::IV,
         defining_relation: "I=ABCDF=ABDEG=CEFG",
     },
     // 2^(7-3): 16 runs, E=ABC, F=BCD, G=ACD → Resolution IV
@@ -143,7 +203,6 @@ const GENERATOR_TABLE: &[GeneratorEntry] = &[
         k: 7,
         p: 3,
         generators: &[&[0, 1, 2], &[1, 2, 3], &[0, 2, 3]],
-        resolution: Resolution::IV,
         defining_relation: "I=ABCE=BCDF=ACDG=ADEF=BDEG=ABFG=CEFG",
     },
 ];
@@ -280,10 +339,12 @@ fn entry_info(entry: &GeneratorEntry) -> FractionalInfo {
             format!("{derived}={word}")
         })
         .collect();
+    let resolution = Resolution::from_defining_relation(entry.defining_relation)
+        .expect("every table entry names at least one non-empty word");
     FractionalInfo {
         k,
         p,
-        resolution: entry.resolution,
+        resolution,
         defining_relation: entry.defining_relation.to_string(),
         generators,
     }
@@ -524,20 +585,68 @@ mod tests {
 
     #[test]
     fn resolution_matches_shortest_defining_word() {
-        // Resolution = length of the shortest word in the defining relation.
-        // The enum caps at V, so designs of true resolution ≥ V assert ≥ 5.
-        for entry in GENERATOR_TABLE {
-            let min_len = relation_words(entry.defining_relation)
+        // Resolution *is* the length of the shortest word in the defining
+        // relation, so the reported value and the relation shipped beside it
+        // are the same fact read twice — exactly, for every entry.
+        for info in standard_fractions() {
+            let min_len = relation_words(&info.defining_relation)
                 .iter()
                 .map(|w| w.len())
                 .min()
                 .expect("non-empty relation");
-            match entry.resolution {
-                Resolution::III => assert_eq!(min_len, 3, "2^({}-{})", entry.k, entry.p),
-                Resolution::IV => assert_eq!(min_len, 4, "2^({}-{})", entry.k, entry.p),
-                Resolution::V => assert!(min_len >= 5, "2^({}-{})", entry.k, entry.p),
-            }
+            assert_eq!(
+                info.resolution.order(),
+                min_len,
+                "2^({}-{}) reports {} against {}",
+                info.k,
+                info.p,
+                info.resolution,
+                info.defining_relation
+            );
         }
+    }
+
+    #[test]
+    fn resolution_matches_the_published_tables() {
+        // Non-circular oracle: the resolutions as published, not as derived
+        // here. NIST/SEMATECH e-Handbook §5.3.3.4.4 ("Resolution" column) and
+        // Montgomery (2019) Table 8.14 — 2^(6-1) is VI and 2^(7-1) is VII, the
+        // textbook 2^(6-1)_VI and 2^(7-1)_VII half fractions.
+        let published = [
+            ((4, 1), "IV"),
+            ((5, 1), "V"),
+            ((5, 2), "III"),
+            ((6, 1), "VI"),
+            ((6, 2), "IV"),
+            ((6, 3), "III"),
+            ((7, 1), "VII"),
+            ((7, 2), "IV"),
+            ((7, 3), "IV"),
+        ];
+        let reported: Vec<((usize, usize), String)> = standard_fractions()
+            .iter()
+            .map(|f| ((f.k, f.p), f.resolution.to_string()))
+            .collect();
+        let expected: Vec<((usize, usize), String)> = published
+            .iter()
+            .map(|&(kp, r)| (kp, r.to_string()))
+            .collect();
+        assert_eq!(reported, expected);
+    }
+
+    #[test]
+    fn resolution_orders_and_prints_as_a_numeral() {
+        assert!(Resolution::VII > Resolution::VI);
+        assert!(Resolution::VI > Resolution::V);
+        assert_eq!(Resolution::III.order(), 3);
+        assert_eq!(Resolution::IV.to_string(), "IV");
+        assert_eq!(Resolution::VII.to_string(), "VII");
+        // No ceiling: a relation longer than the table's own still reads back.
+        let deep = Resolution::from_defining_relation("I=ABCDEFGHI").expect("one word");
+        assert_eq!(deep.order(), 9);
+        assert_eq!(deep.to_string(), "IX");
+        // The identity alone names no word.
+        assert_eq!(Resolution::from_defining_relation("I"), None);
     }
 
     #[test]

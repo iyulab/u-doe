@@ -215,6 +215,8 @@ Every fraction `fractional_factorial` can build, in ascending `(k, p)` order, ea
 
 Metadata for the fraction `fractional_factorial(k, p)` emits: resolution, defining relation, and generator equations. Use it to derive the alias structure of the design you actually received instead of pairing the matrix with an external published table.
 
+`resolution` is the Roman numeral for the length of the shortest word in `defining_relation`, read off that relation rather than stored beside it, so the two cannot disagree. Across the standard table it runs `"III"` to `"VII"` — the half fractions of six and seven factors are `"VI"` and `"VII"`.
+
 **Output:**
 ```json
 {
