@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Every exported WASM function declares its return type.** They were typed
+  `(...) => any`, with the output's field *names* in the doc comment and the
+  element types only in the README -- so a consumer's wrong assumption about a
+  result's shape compiled and shipped. `as` is the only thing that can be
+  written against `any`, and it is exactly the construct that silences this.
+
+  The declarations are derived from the structs the binding already
+  serialises, so there is no second copy to drift: `tsify` emits the interface
+  and `unchecked_return_type` names it in the signature. The runtime path is
+  unchanged -- same serializer, same bytes. An optional field is declared
+  `T | null`, which is what this crate's serializer sends.
+
+  A publish-path check (`scripts/check-typed-dts.sh`) fails the release if any
+  exported function returns `any`, or if a declaration names a type the file
+  does not declare. It runs before publishing rather than beside it in CI,
+  because the two run on the same push.
+
+  Inputs remain `any`; they are validated at the boundary.
+
+### Changed
+
+- **`Resolution` carries the word length instead of a fixed set of names.** It
+  was an enum stopping at `V`, which is why VI and VII had nowhere to go. It is
+  now a comparable value with `III` through `VII` as named constants, an
+  `order()` accessor for the word length, and no ceiling -- so `resolution >
+  Resolution::V` is a question that can be asked, and a longer relation reports
+  what it is. `Display` and the JSON `resolution` field are unchanged in shape:
+  a Roman numeral string.
+
 ### Fixed
 
 - **`fractional_factorial_info` / `standard_fractions` reported a resolution
@@ -21,16 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   corrected. Understating a resolution is the conservative direction for a
   warning but the wrong one for choosing a design: a VI presented as V looks
   weaker than it is and argues for more runs than the design needs.
-
-### Changed
-
-- **`Resolution` carries the word length instead of a fixed set of names.** It
-  was an enum stopping at `V`, which is why VI and VII had nowhere to go. It is
-  now a comparable value with `III` through `VII` as named constants, an
-  `order()` accessor for the word length, and no ceiling -- so `resolution >
-  Resolution::V` is a question that can be asked, and a longer relation reports
-  what it is. `Display` and the JSON `resolution` field are unchanged in shape:
-  a Roman numeral string.
 
 ## [0.14.0] - 2026-09-16
 

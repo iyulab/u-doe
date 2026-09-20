@@ -123,7 +123,8 @@ fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Resul
 // DTO types
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct DesignMatrixDto {
     data: Vec<Vec<f64>>,
     factor_names: Vec<String>,
@@ -144,7 +145,8 @@ impl From<crate::design::DesignMatrix> for DesignMatrixDto {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct FractionalInfoDto {
     k: usize,
     p: usize,
@@ -165,7 +167,8 @@ impl From<crate::design::factorial::FractionalInfo> for FractionalInfoDto {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct EffectRowDto {
     name: String,
     sum_of_squares: f64,
@@ -175,7 +178,8 @@ struct EffectRowDto {
     p_value: Option<f64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct DoeAnovaResultDto {
     effects: Vec<EffectRowDto>,
     residual_ss: f64,
@@ -189,7 +193,8 @@ struct DoeAnovaResultDto {
     pure_error: Option<PureErrorDto>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct LeastSquaresTermDto {
     name: String,
     coefficient: f64,
@@ -203,7 +208,8 @@ struct LeastSquaresTermDto {
     p_value: Option<f64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct LeastSquaresFitDto {
     intercept: f64,
     terms: Vec<LeastSquaresTermDto>,
@@ -216,7 +222,8 @@ struct LeastSquaresFitDto {
     residuals: Vec<f64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct CurvatureDto {
     sum_of_squares: f64,
     df: usize,
@@ -224,7 +231,8 @@ struct CurvatureDto {
     p_value: Option<f64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct PureErrorDto {
     sum_of_squares: f64,
     df: usize,
@@ -240,7 +248,7 @@ struct PureErrorDto {
 ///
 /// # Errors
 /// Throws an `Error` carrying `code` if `k` is out of range (2..=7).
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn full_factorial(k: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::factorial::full_factorial(k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -257,7 +265,7 @@ pub fn full_factorial(k: usize) -> Result<JsValue, JsValue> {
 /// # Errors
 /// Throws an `Error` carrying `code` if `k` is out of range (2..=6), `n_center == 0`,
 /// or `design_type` is unrecognised.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn ccd(k: usize, design_type: &str, n_center: usize) -> Result<JsValue, JsValue> {
     let alpha_type = match design_type {
         "FaceCentered" => crate::design::ccd::AlphaType::FaceCentered,
@@ -283,7 +291,7 @@ pub fn ccd(k: usize, design_type: &str, n_center: usize) -> Result<JsValue, JsVa
 ///
 /// # Errors
 /// Throws an `Error` carrying `code` if `k` is not 3, 4, or 5, or `n_center == 0`.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn box_behnken(k: usize, n_center: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::box_behnken::box_behnken(k, n_center).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -299,7 +307,7 @@ pub fn box_behnken(k: usize, n_center: usize) -> Result<JsValue, JsValue> {
 ///
 /// # Errors
 /// Throws an `Error` carrying `code` if the array name is unknown or `k` exceeds capacity.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn taguchi_array(name: &str, k: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::taguchi::taguchi_array(name, k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -311,7 +319,7 @@ pub fn taguchi_array(name: &str, k: usize) -> Result<JsValue, JsValue> {
 ///
 /// # Errors
 /// Throws an `Error` carrying `code` if `k` is out of the supported range.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn definitive_screening(k: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::definitive_screening(k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -341,7 +349,7 @@ pub fn definitive_screening(k: usize) -> Result<JsValue, JsValue> {
 /// # Errors
 /// Throws an `Error` carrying `code` if dimensions do not match or an argument has the
 /// wrong shape (arguments are native JS values, not JSON strings).
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DoeAnovaResultDto")]
 pub fn doe_anova(
     design: JsValue,
     responses: &[f64],
@@ -412,7 +420,7 @@ pub fn doe_anova(
 /// (centre points belong in `doe_anova`, axial points in `fit_rsm`), the
 /// requested terms are aliased with each other or with the mean over the runs
 /// kept, or the terms and intercept outnumber the runs.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "LeastSquaresFitDto")]
 pub fn fit_least_squares(
     design: JsValue,
     responses: &[f64],
@@ -469,7 +477,7 @@ pub fn fit_least_squares(
 /// # Errors
 /// Throws an `Error` carrying `code` if the goal string is unrecognised, or if the
 /// response data violates the requirements for the chosen goal.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "number[]")]
 pub fn signal_to_noise(responses: JsValue, goal: &str) -> Result<JsValue, JsValue> {
     let responses: Vec<Vec<f64>> = from_js(responses, "responses")?;
 
@@ -504,7 +512,7 @@ pub fn signal_to_noise(responses: JsValue, goal: &str) -> Result<JsValue, JsValu
 ///
 /// # Errors
 /// Throws an `Error` carrying `code` if the (k, p) combination is not in the standard table.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn fractional_factorial(k: usize, p: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::factorial::fractional_factorial(k, p).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -525,7 +533,7 @@ pub fn fractional_factorial(k: usize, p: usize) -> Result<JsValue, JsValue> {
 ///
 /// # Errors
 /// Throws an `Error` carrying `code` if the (k, p) combination is not in the standard table.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "FractionalInfoDto")]
 pub fn fractional_factorial_info(k: usize, p: usize) -> Result<JsValue, JsValue> {
     let info = crate::design::factorial::fractional_factorial_info(k, p).map_err(js_err)?;
     to_js(&FractionalInfoDto::from(info))
@@ -537,7 +545,7 @@ pub fn fractional_factorial_info(k: usize, p: usize) -> Result<JsValue, JsValue>
 ///
 /// Lets a caller offer exactly the buildable fractions without copying the
 /// table or trying each `(k, p)` and catching the refusal.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "FractionalInfoDto[]")]
 pub fn standard_fractions() -> Result<JsValue, JsValue> {
     let table: Vec<FractionalInfoDto> = crate::design::factorial::standard_fractions()
         .into_iter()
@@ -554,7 +562,7 @@ pub fn standard_fractions() -> Result<JsValue, JsValue> {
 ///
 /// # Errors
 /// Throws an `Error` carrying `code` if `k == 0` or `k > 19`.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn plackett_burman(k: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::plackett_burman::plackett_burman(k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -569,7 +577,7 @@ pub fn plackett_burman(k: usize) -> Result<JsValue, JsValue> {
 ///
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 /// Factor names are "X1", "X2", ..., "Xq".
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn simplex_lattice(q: usize, m: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::mixture::simplex_lattice(q, m).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -583,7 +591,7 @@ pub fn simplex_lattice(q: usize, m: usize) -> Result<JsValue, JsValue> {
 ///
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 /// Factor names are "X1", "X2", ..., "Xq".
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn simplex_centroid(q: usize) -> Result<JsValue, JsValue> {
     let design = crate::design::mixture::simplex_centroid(q).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -593,7 +601,8 @@ pub fn simplex_centroid(q: usize) -> Result<JsValue, JsValue> {
 // P2: Effects estimation
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct EffectEstimateDto {
     name: String,
     columns: Vec<usize>,
@@ -602,14 +611,16 @@ struct EffectEstimateDto {
     percent_contribution: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct HalfNormalPointDto {
     term_index: usize,
     abs_effect: f64,
     quantile: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct LenthDto {
     pse: f64,
     margin_of_error: f64,
@@ -617,7 +628,8 @@ struct LenthDto {
     distinct_contrasts: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct EstimateEffectsResultDto {
     effects: Vec<EffectEstimateDto>,
     half_normal: Vec<HalfNormalPointDto>,
@@ -651,7 +663,7 @@ struct EstimateEffectsResultDto {
 /// runs are unbalanced or two terms are partially aliased -- a run left out,
 /// unequal replication, or a 12-run Plackett-Burman at `max_order` 2. The
 /// contrast formula gives plausible-looking and wrong numbers for those.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "EstimateEffectsResultDto")]
 pub fn estimate_effects(
     design: JsValue,
     responses: &[f64],
@@ -706,7 +718,8 @@ pub fn estimate_effects(
 // P2: RSM
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct RsmModelDto {
     coefficients: Vec<f64>,
     /// What each coefficient is, in the same order.
@@ -733,7 +746,7 @@ struct RsmModelDto {
 /// Throws an `Error` carrying `code` if dimensions do not match, an argument has the
 /// wrong shape (arguments are native JS values, not JSON strings),
 /// or the model matrix is singular.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "RsmModelDto")]
 pub fn fit_rsm(
     design: JsValue,
     responses: &[f64],
@@ -806,13 +819,15 @@ pub fn rsm_predict(
         .collect()
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct AscentStepDto {
     coded: Vec<f64>,
     step_number: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct SteepestAscentResultDto {
     steps: Vec<AscentStepDto>,
 }
@@ -825,7 +840,7 @@ struct SteepestAscentResultDto {
 /// `step_size`: step size in coded units.
 ///
 /// Returns `{ steps: [{ coded: [f64], step_number: usize }] }`.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "SteepestAscentResultDto")]
 pub fn steepest_ascent(
     coefficients: JsValue,
     factor_count: usize,
@@ -877,7 +892,8 @@ struct ResponseSpecInput {
     importance: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 struct DesirabilityResultDto {
     individual: Vec<f64>,
     overall: f64,
@@ -944,7 +960,7 @@ fn parse_response_specs(
 /// `index`, `parameter`, `value`, `domain`) if `s1` -- or `s2` for Target -- is not
 /// positive, or `importance` is negative; `response_count_mismatch`,
 /// `empty_responses` or `no_weighted_response` for the lists as a whole.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesirabilityResultDto")]
 pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValue> {
     use crate::optimization::desirability::overall_desirability;
 
@@ -966,7 +982,8 @@ pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValu
     to_js(&dto)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum DesirabilityOptimumDto {
     Best {
@@ -1010,7 +1027,7 @@ enum DesirabilityOptimumDto {
 /// `specs.length`, and `value_out_of_domain` (`parameter: "response"`) for a
 /// response that is not finite -- a NaN is not a score, and letting it through
 /// as 0 would report a reachable response as unreachable.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "DesirabilityOptimumDto")]
 pub fn optimize_desirability(specs: JsValue, candidates: &[f64]) -> Result<JsValue, JsValue> {
     use crate::optimization::desirability::{optimize_desirability, DesirabilityOptimum};
 
