@@ -336,6 +336,15 @@ Compute Taguchi S/N ratios. `responses`: `[[f64]]` (replicates per run). `goal`:
 
 Estimate main effects and interactions for a 2-level factorial design.
 
+**Input:** `design`: `[[f64]]` (runs x factors, coded -1/+1), `responses`: `Float64Array`,
+`factor_names`: `["A","B","C"]`, `max_order`: highest interaction order. A generated design
+is an object; pass its `data`, not the object itself:
+
+```js
+const d = full_factorial(3)
+estimate_effects(d.data, responses, d.factor_names, 2)
+```
+
 Since 0.11.0 the runs must be balanced and the contrasts orthogonal, as the
 contrast formula assumes. A design with a run left out or unequal replication
 is an error rather than a set of plausible-looking effects, and so is a term
