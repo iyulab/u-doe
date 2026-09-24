@@ -122,8 +122,16 @@ jobs:
           e = refusal(() => m.desirability([spec('Maximize', 0, 10, 10), spec('Target', 10, 5, 0)], [5, 5]))
           ok(e.code === 'invalid_desirability_limits' && e.index === 1 && e.goal === 'Target', `code=${e.code} index=${e.index}`)
 
-          e = refusal(() => m.two_level_factorial_power(3, 0, 1, 1, 1, 2))
+          e = refusal(() => m.two_level_factorial_power(3, 0, 2, 1, 1, 2))
           ok(e.code === 'value_out_of_domain' && e.parameter === 'alpha', `code=${e.code} parameter=${e.parameter}`)
+
+          // Power is the noncentral t test with the model's error df (0.648 here;
+          // the normal approximation said 0.760), and an unreplicated full model
+          // has no error df to test against.
+          const pw = m.two_level_factorial_power(3, 0, 2, 2.0, 1.5, 0.05)
+          ok(Math.abs(pw - 0.6480) < 1e-3, `two_level_factorial_power 2^3 x 2 = ${pw}, want 0.648`)
+          e = refusal(() => m.two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05))
+          ok(e.code === 'no_error_degrees_of_freedom' && e.terms === 7 && e.runs === 8, `code=${e.code}`)
 
           // Inputs that once trapped the module are refused like any other.
           e = refusal(() => m.fit_rsm([], [], []))

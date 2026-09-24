@@ -71,6 +71,12 @@ pub enum DoeError {
     /// curvature term, when there is one) but not the mean; the design offers
     /// `runs - 1` degrees of freedom.
     OverSpecifiedModel { terms: usize, runs: usize },
+    /// The model spends every degree of freedom the runs offer (`terms` =
+    /// `runs - 1`, the mean not counted), so none is left to estimate the error
+    /// from and no t test of an effect can be run. An unreplicated full
+    /// factorial fitted with all its interactions is the usual case: replicate
+    /// it, or leave terms out of the model.
+    NoErrorDegreesOfFreedom { terms: usize, runs: usize },
     /// The model matrix is singular: its columns are linearly dependent over
     /// the runs given, so the coefficients are not identifiable.
     SingularModel,
@@ -179,6 +185,7 @@ impl DoeError {
             DoeError::AliasedEffects { .. } => "aliased_effects",
             DoeError::PartiallyAliasedEffects { .. } => "partially_aliased_effects",
             DoeError::OverSpecifiedModel { .. } => "over_specified_model",
+            DoeError::NoErrorDegreesOfFreedom { .. } => "no_error_degrees_of_freedom",
             DoeError::SingularModel => "singular_model",
             DoeError::CoefficientCountMismatch { .. } => "coefficient_count_mismatch",
             DoeError::PointDimensionMismatch { .. } => "point_dimension_mismatch",
@@ -289,6 +296,13 @@ impl std::fmt::Display for DoeError {
                 f,
                 "model has {terms} terms but the design has only {} degrees of freedom \
                  ({runs} runs); drop terms or add runs",
+                runs.saturating_sub(1)
+            ),
+            DoeError::NoErrorDegreesOfFreedom { terms, runs } => write!(
+                f,
+                "a model with {terms} terms uses all {} degrees of freedom of {runs} runs, \
+                 leaving none for the error, so no effect can be tested; add replicates or \
+                 leave terms out of the model",
                 runs.saturating_sub(1)
             ),
             DoeError::SingularModel => write!(
@@ -438,6 +452,7 @@ mod tests {
                 second: "I".into(),
             },
             DoeError::OverSpecifiedModel { terms: 9, runs: 8 },
+            DoeError::NoErrorDegreesOfFreedom { terms: 7, runs: 8 },
             DoeError::SingularModel,
             DoeError::CoefficientCountMismatch {
                 factors: 2,

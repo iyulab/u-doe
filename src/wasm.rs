@@ -1067,16 +1067,23 @@ pub fn optimize_desirability(specs: JsValue, candidates: &[f64]) -> Result<JsVal
 // Power analysis
 // ---------------------------------------------------------------------------
 
-/// Compute the statistical power of a 2^(k-p) factorial design.
+/// Power of the two-sided t test of one effect in a 2^(k-p) factorial design.
 ///
-/// Uses the normal approximation. Returns power in [0, 1].
+/// Computed from the noncentral t distribution with the error degrees of
+/// freedom of the fitted model, `N − 1 − model_terms` for `N` runs -- the
+/// standard DOE calculation. `model_terms` counts the model's terms besides
+/// the mean; leave it out (`undefined` or `null`) for the full model, every
+/// effect the fraction can estimate. Returns power in [0, 1].
 ///
 /// # Errors
 /// Throws an `Error` carrying `code`: `parameter_out_of_range` (with
-/// `parameter` `"k"`, `"p"` or `"n_replicates"`) for `k = 0`, `p >= k` or no
-/// replicates; `value_out_of_domain` (with `parameter`, `value`, `domain`)
-/// unless `effect_size` and `sigma` are positive and `alpha` is strictly
-/// between 0 and 1.
+/// `parameter` `"k"`, `"p"`, `"n_replicates"` or `"model_terms"`) for `k = 0`,
+/// `p >= k`, no replicates, or a term count outside `1..=2^(k-p) − 1`;
+/// `value_out_of_domain` (with `parameter`, `value`, `domain`) unless
+/// `effect_size` and `sigma` are positive and `alpha` is strictly between 0
+/// and 1; `no_error_degrees_of_freedom` (with `terms`, `runs`) when the model
+/// uses every degree of freedom -- an unreplicated full model -- so no effect
+/// can be tested.
 ///
 /// # Arguments
 /// * `k` — total number of factors
@@ -1085,6 +1092,7 @@ pub fn optimize_desirability(specs: JsValue, candidates: &[f64]) -> Result<JsVal
 /// * `effect_size` — detectable effect δ (in response units)
 /// * `sigma` — process standard deviation σ
 /// * `alpha` — type-I error rate (e.g. 0.05)
+/// * `model_terms` — terms in the fitted model besides the mean (optional)
 #[wasm_bindgen]
 pub fn two_level_factorial_power(
     k: usize,
@@ -1093,9 +1101,18 @@ pub fn two_level_factorial_power(
     effect_size: f64,
     sigma: f64,
     alpha: f64,
+    model_terms: Option<usize>,
 ) -> Result<f64, JsValue> {
-    crate::power::two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha)
-        .map_err(js_err)
+    crate::power::two_level_factorial_power(
+        k,
+        p,
+        n_replicates,
+        effect_size,
+        sigma,
+        alpha,
+        model_terms,
+    )
+    .map_err(js_err)
 }
 
 // ── Wire-schema strictness tests ─────────────────────────────────────

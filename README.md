@@ -92,13 +92,17 @@ for e in &effects {
 ```rust
 use u_doe::power::{two_level_factorial_power, required_replicates};
 
-// Power for a 2^3 full factorial, detecting effect of 2σ with α=0.05
-let power = two_level_factorial_power(3, 0, 2, 2.0, 1.0, 0.05).unwrap();
-println!("Power = {power:.3}");  // ~0.95 at n=2 replicates
+// Power of the t test of one effect in a 2^3 run twice (full model, 8 error df),
+// for an effect of 2 with σ = 1 at α = 0.05
+let power = two_level_factorial_power(3, 0, 2, 2.0, 1.0, 0.05, None).unwrap();
+println!("Power = {power:.3}");  // 0.937
 
-// Minimum replicates to achieve 80% power
-let n = required_replicates(3, 0, 2.0, 1.0, 0.05, 0.80, 10).unwrap(); // None if 10 is not enough
-println!("Required replicates: {n}");
+// The same design unreplicated, fitting main effects only (8 − 1 − 3 = 4 error df)
+let screening = two_level_factorial_power(3, 0, 1, 2.0, 1.0, 0.05, Some(3)).unwrap();
+
+// Minimum replicates to achieve 80% power (None if 10 is not enough)
+let n = required_replicates(3, 0, 2.0, 1.0, 0.05, 0.80, 10, None).unwrap();
+println!("Required replicates: {n:?}");
 ```
 
 ## Design Types
@@ -184,7 +188,7 @@ try {
 | `code` | Fields | Meaning |
 |---|---|---|
 | `invalid_factor_count` | `min`, `max`, `got` | Factor count outside the generator's range |
-| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `n_center`, `max_order`, the lattice degree `m`, or power's `k`, `p`, `n_replicates` out of range |
+| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `n_center`, `max_order`, the lattice degree `m`, or power's `k`, `p`, `n_replicates`, `model_terms` out of range |
 | `unsupported_fraction` | `k`, `p`, `supported` (`[[k, p], ...]`) | 2^(k-p) not in the standard table — see `standard_fractions()` |
 | `unknown_array` | `array`, `supported` | No Taguchi array of that name |
 | `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
@@ -197,6 +201,7 @@ try {
 | `aliased_effects` | `first`, `second` | Two terms share a contrast column; `second` is `"I"` when `first` is constant (one level left) |
 | `partially_aliased_effects` | `first`, `second` | Two terms' contrasts are correlated; `second` is `"I"` when the runs are unbalanced |
 | `over_specified_model` | `terms`, `runs` | More terms than the `runs - 1` degrees of freedom (`terms` excludes the mean) |
+| `no_error_degrees_of_freedom` | `terms`, `runs` | Power: the model uses all `runs - 1` degrees of freedom, leaving none to test an effect against |
 | `singular_model` | — | The runs do not support the model (e.g. a quadratic fit on a two-level design) |
 | `coefficient_count_mismatch` | `factors`, `expected`, `got` | `steepest_ascent` coefficients not of a quadratic model in that many factors |
 | `too_few_replicates` | `run`, `needed`, `got` | `signal_to_noise`: a run with too few measurements for the goal |
@@ -467,11 +472,27 @@ throws, plus `empty_responses` for no candidates, `response_count_mismatch` when
 `value_out_of_domain` (`parameter: "response"`) for a response that is not
 finite.
 
-#### `two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha) -> f64`
+#### `two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha, model_terms?) -> f64`
 
-Throws `parameter_out_of_range` or `value_out_of_domain` for inputs that have no power to report (`k = 0`, `p >= k`, no replicates, a non-positive effect or σ, `alpha` outside (0, 1)) — until 0.13.0 these returned `0`.
+Power of the two-sided t test of one effect in a 2^(k-p) factorial design, in [0, 1].
+It is computed from the noncentral t distribution with the fitted model's error degrees of
+freedom, `N − 1 − model_terms` for `N = n_replicates · 2^(k-p)` runs — the calculation
+standard DOE references and packages use. `model_terms` counts the model's terms besides
+the mean; omit it (or pass `null`) for the full model, every effect the fraction can
+estimate (`2^(k-p) − 1` terms), or pass e.g. `k` for a main-effects model.
 
-Compute statistical power of a 2^(k-p) factorial design. Returns power in [0, 1].
+```js
+two_level_factorial_power(3, 0, 2, 2.0, 1.5, 0.05)     // 0.648 (8 error df)
+two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05, 3)  // 0.306 (main effects, 4 error df)
+two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05)     // throws no_error_degrees_of_freedom
+```
+
+Throws `parameter_out_of_range` (`k = 0`, `p >= k`, no replicates, `model_terms` outside
+`1..=2^(k-p) − 1`), `value_out_of_domain` (a non-positive effect or σ, `alpha` outside (0, 1)),
+or `no_error_degrees_of_freedom` when the model uses every degree of freedom — an
+unreplicated full model, where no effect can be tested. Until 0.15.0 this function used a
+normal approximation, which ignores the error degrees of freedom and overstates power most
+for small designs (0.760 instead of 0.648 in the first example).
 
 ## npm (WebAssembly)
 

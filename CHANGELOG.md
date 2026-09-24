@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Power is computed from the noncentral t distribution with the error
+  degrees of freedom of the fitted model**, the calculation standard DOE
+  references and packages use. It used a normal approximation, which ignores
+  the error degrees of freedom and is always optimistic -- most for small
+  designs, where power is asked about: a 2^3 run twice (8 error df) now
+  reports 0.648 for an effect of 2 with σ = 1.5, where it reported 0.760, and
+  one factor with δ = σ needs 17 replicates for 80 % power, not 16. **Power
+  values drop; required replicate counts can rise.** This applies to
+  `two_level_factorial_power`, `required_replicates` and `power_curve`.
+- **Breaking:** the three functions take a final `model_terms: Option<usize>`
+  -- the fitted model's terms besides the mean, which set its error degrees
+  of freedom. `None` is the full model. In WebAssembly the argument is
+  optional, so existing calls keep working.
+- An unreplicated full model leaves no error degrees of freedom, so no effect
+  can be tested: `two_level_factorial_power` refuses it with the new
+  `DoeError::NoErrorDegreesOfFreedom` (`no_error_degrees_of_freedom`, with
+  `terms` and `runs`), and `required_replicates` / `power_curve` pass over that
+  replicate count. It used to return a normal-approximation number.
+
+### Fixed
+
+- The README power example did not compile (`{n}` on an `Option`) and quoted a
+  power of about 0.95 where the design has 0.937.
+
 ## [0.15.0] - 2026-09-20
 
 ### Added
