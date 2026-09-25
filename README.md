@@ -137,20 +137,33 @@ npm install @iyulab/u-doe
 
 ### TypeScript
 
-Every exported function declares its return type, and the declarations are
-generated from the same structs the binding serialises, so they cannot drift
-from what it actually returns:
+Every exported function declares its parameter and return types, and the
+declarations are generated from the same structs the binding reads and
+serialises, so they cannot drift from what it actually accepts and returns:
 
 ```ts
-export function standard_fractions(): FractionalInfoDto[];
+export function estimate_effects(design: number[][], responses: Float64Array,
+  factor_names: string[], max_order: number): EstimateEffectsResultDto;
+export function desirability(specs: ResponseSpecInput[],
+  responses: Float64Array): DesirabilityResultDto;
+export function ccd(k: number, design_type: "FaceCentered" | "Rotatable" | "Inscribed",
+  n_center: number): DesignMatrixDto;
 ```
 
 An absent optional value is declared `T | null`, which is what the binding
-sends. Nothing needs an `as` cast -- and a wrong assumption about a result's
-shape is a compile error rather than something that fails at run time.
+sends. Nothing needs an `as` cast, and a wrong assumption is a compile error
+rather than something that fails at run time -- on the way in as well as on
+the way out. Passing a generator's whole result where its matrix belongs, or
+misspelling a goal, no longer compiles:
 
-Inputs are still `any`: they are validated at the boundary, and a rejected one
-says what was wrong.
+```ts
+const d = full_factorial(3);
+estimate_effects(d, y, d.factor_names, 2);       // error: DesignMatrixDto is not number[][]
+estimate_effects(d.data, y, d.factor_names, 2);  // ok
+```
+
+The binding still validates every input at the boundary, for JavaScript
+callers and for values that reach it through a cast.
 
 ### Quick Start
 

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Every exported WASM function declares its parameter types.** Inputs were
+  typed `any`, so under strict TypeScript
+  `estimate_effects(full_factorial(3), ...)` compiled -- the generator's result
+  object where its `data` matrix belongs -- and failed only at run time with
+  `malformed_input`. Design matrices are now `number[][]`, name lists
+  `string[]`, coefficients `number[]`, desirability specifications
+  `ResponseSpecInput[]` (with `importance` optional), and the string options of
+  `ccd`, `taguchi_array`, `signal_to_noise` and a specification's `goal` are
+  unions of the values they accept. **TypeScript code that passed a wrong shape
+  or a misspelt option now fails to compile**; the runtime path is unchanged,
+  and every input is still validated at the boundary.
+- The publishing workflow now also fails if an exported function takes a
+  parameter typed `any` (`check-typed-dts.sh --params`).
+
 ## [0.16.0] - 2026-09-25
 
 Requires `u-numflow` 0.6.3 (`noncentral_t_cdf`).

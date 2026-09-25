@@ -266,7 +266,12 @@ pub fn full_factorial(k: usize) -> Result<JsValue, JsValue> {
 /// Throws an `Error` carrying `code` if `k` is out of range (2..=6), `n_center == 0`,
 /// or `design_type` is unrecognised.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
-pub fn ccd(k: usize, design_type: &str, n_center: usize) -> Result<JsValue, JsValue> {
+pub fn ccd(
+    k: usize,
+    #[wasm_bindgen(unchecked_param_type = "\"FaceCentered\" | \"Rotatable\" | \"Inscribed\"")]
+    design_type: &str,
+    n_center: usize,
+) -> Result<JsValue, JsValue> {
     let alpha_type = match design_type {
         "FaceCentered" => crate::design::ccd::AlphaType::FaceCentered,
         "Rotatable" => crate::design::ccd::AlphaType::Rotatable,
@@ -308,7 +313,13 @@ pub fn box_behnken(k: usize, n_center: usize) -> Result<JsValue, JsValue> {
 /// # Errors
 /// Throws an `Error` carrying `code` if the array name is unknown or `k` exceeds capacity.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
-pub fn taguchi_array(name: &str, k: usize) -> Result<JsValue, JsValue> {
+pub fn taguchi_array(
+    #[wasm_bindgen(
+        unchecked_param_type = "\"L4\" | \"L8\" | \"L9\" | \"L12\" | \"L16\" | \"L18\" | \"L27\""
+    )]
+    name: &str,
+    k: usize,
+) -> Result<JsValue, JsValue> {
     let design = crate::design::taguchi::taguchi_array(name, k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -351,10 +362,10 @@ pub fn definitive_screening(k: usize) -> Result<JsValue, JsValue> {
 /// wrong shape (arguments are native JS values, not JSON strings).
 #[wasm_bindgen(unchecked_return_type = "DoeAnovaResultDto")]
 pub fn doe_anova(
-    design: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
     responses: &[f64],
-    factor_names: JsValue,
-    effect_names: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "string[]")] effect_names: JsValue,
 ) -> Result<JsValue, JsValue> {
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
@@ -422,10 +433,10 @@ pub fn doe_anova(
 /// kept, or the terms and intercept outnumber the runs.
 #[wasm_bindgen(unchecked_return_type = "LeastSquaresFitDto")]
 pub fn fit_least_squares(
-    design: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
     responses: &[f64],
-    factor_names: JsValue,
-    effect_names: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "string[]")] effect_names: JsValue,
 ) -> Result<JsValue, JsValue> {
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
@@ -478,7 +489,13 @@ pub fn fit_least_squares(
 /// Throws an `Error` carrying `code` if the goal string is unrecognised, or if the
 /// response data violates the requirements for the chosen goal.
 #[wasm_bindgen(unchecked_return_type = "number[]")]
-pub fn signal_to_noise(responses: JsValue, goal: &str) -> Result<JsValue, JsValue> {
+pub fn signal_to_noise(
+    #[wasm_bindgen(unchecked_param_type = "number[][]")] responses: JsValue,
+    #[wasm_bindgen(
+        unchecked_param_type = "\"LargerIsBetter\" | \"SmallerIsBetter\" | \"NominalIsBest\""
+    )]
+    goal: &str,
+) -> Result<JsValue, JsValue> {
     let responses: Vec<Vec<f64>> = from_js(responses, "responses")?;
 
     let sn_goal = match goal {
@@ -665,9 +682,9 @@ struct EstimateEffectsResultDto {
 /// contrast formula gives plausible-looking and wrong numbers for those.
 #[wasm_bindgen(unchecked_return_type = "EstimateEffectsResultDto")]
 pub fn estimate_effects(
-    design: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
     responses: &[f64],
-    factor_names: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
     max_order: usize,
 ) -> Result<JsValue, JsValue> {
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
@@ -748,9 +765,9 @@ struct RsmModelDto {
 /// or the model matrix is singular.
 #[wasm_bindgen(unchecked_return_type = "RsmModelDto")]
 pub fn fit_rsm(
-    design: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
     responses: &[f64],
-    factor_names: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
 ) -> Result<JsValue, JsValue> {
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
@@ -786,7 +803,7 @@ pub fn fit_rsm(
 /// `parameter_out_of_range` if `factor_count` is 0.
 #[wasm_bindgen]
 pub fn rsm_predict(
-    coefficients: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "number[]")] coefficients: JsValue,
     factor_count: usize,
     coded: &[f64],
 ) -> Result<Vec<f64>, JsValue> {
@@ -842,7 +859,7 @@ struct SteepestAscentResultDto {
 /// Returns `{ steps: [{ coded: [f64], step_number: usize }] }`.
 #[wasm_bindgen(unchecked_return_type = "SteepestAscentResultDto")]
 pub fn steepest_ascent(
-    coefficients: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "number[]")] coefficients: JsValue,
     factor_count: usize,
     n_steps: usize,
     step_size: f64,
@@ -878,9 +895,13 @@ fn default_importance() -> f64 {
     1.0
 }
 
-#[derive(serde::Deserialize)]
+/// One response's desirability specification, as `desirability` and
+/// `optimize_desirability` read it. Declared for TypeScript so a misspelt
+/// field or goal fails to compile rather than at the boundary.
+#[derive(serde::Deserialize, tsify::Tsify)]
 #[serde(deny_unknown_fields)]
 struct ResponseSpecInput {
+    #[tsify(type = "\"Maximize\" | \"Minimize\" | \"Target\"")]
     goal: String,
     lower: f64,
     target: f64,
@@ -889,6 +910,7 @@ struct ResponseSpecInput {
     s2: f64,
     /// Relative importance weight rᵢ (Derringer-Suich). Optional; defaults to 1.0.
     #[serde(default = "default_importance")]
+    #[tsify(optional)]
     importance: f64,
 }
 
@@ -961,7 +983,10 @@ fn parse_response_specs(
 /// positive, or `importance` is negative; `response_count_mismatch`,
 /// `empty_responses` or `no_weighted_response` for the lists as a whole.
 #[wasm_bindgen(unchecked_return_type = "DesirabilityResultDto")]
-pub fn desirability(specs: JsValue, responses: &[f64]) -> Result<JsValue, JsValue> {
+pub fn desirability(
+    #[wasm_bindgen(unchecked_param_type = "ResponseSpecInput[]")] specs: JsValue,
+    responses: &[f64],
+) -> Result<JsValue, JsValue> {
     use crate::optimization::desirability::overall_desirability;
 
     let specs = parse_response_specs(specs)?;
@@ -1028,7 +1053,10 @@ enum DesirabilityOptimumDto {
 /// response that is not finite -- a NaN is not a score, and letting it through
 /// as 0 would report a reachable response as unreachable.
 #[wasm_bindgen(unchecked_return_type = "DesirabilityOptimumDto")]
-pub fn optimize_desirability(specs: JsValue, candidates: &[f64]) -> Result<JsValue, JsValue> {
+pub fn optimize_desirability(
+    #[wasm_bindgen(unchecked_param_type = "ResponseSpecInput[]")] specs: JsValue,
+    candidates: &[f64],
+) -> Result<JsValue, JsValue> {
     use crate::optimization::desirability::{optimize_desirability, DesirabilityOptimum};
 
     let specs = parse_response_specs(specs)?;
