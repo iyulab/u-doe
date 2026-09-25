@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-25
+
+Requires `u-numflow` 0.6.3 (`noncentral_t_cdf`).
+
 ### Changed
 
 - **Power is computed from the noncentral t distribution with the error
