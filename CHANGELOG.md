@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-29
+
 ### Changed
 
 - **Every exported WASM function declares its parameter types.** Inputs were
@@ -21,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or a misspelt option now fails to compile**; the runtime path is unchanged,
   and every input is still validated at the boundary.
 - The publishing workflow now also fails if an exported function takes a
-  parameter typed `any` (`check-typed-dts.sh --params`).
+  parameter typed `any` (`check-typed-dts.sh`).
 
 ## [0.16.0] - 2026-09-25
 
