@@ -93,6 +93,15 @@ jobs:
       # is whether a refusal arrives as an `Error` carrying `code` and its
       # fields, and an absent value as `null` rather than `undefined` or `NaN`.
       # This is the last gate before `npm publish`.
+      - name: README examples run against the built package
+        # An example written for another build target (`import init` + `await
+        # init()`) passes the import check above and fails on the first line a
+        # reader copies from the registry page.
+        run: |
+          PKG_NAME=$(node -p "require('./pkg/package.json').name")
+          cd "$RUNNER_TEMP/smoke"
+          node "$GITHUB_WORKSPACE/scripts/check-readme-snippets.mjs" "$PKG_NAME"
+
       - name: Node behaviour gate (errors and absent values)
         run: |
           PKG_NAME=$(node -p "require('./pkg/package.json').name")

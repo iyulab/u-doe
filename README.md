@@ -168,9 +168,8 @@ callers and for values that reach it through a cast.
 ### Quick Start
 
 ```javascript
-import init, { full_factorial, doe_anova } from '@iyulab/u-doe';
+import { full_factorial, doe_anova } from '@iyulab/u-doe';
 
-await init();
 const design = full_factorial(3); // 2^3 = 8 runs
 ```
 

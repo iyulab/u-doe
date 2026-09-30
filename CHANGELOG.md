@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The publishing workflow runs the README's JavaScript examples against the
+  built package before it publishes, so an example that throws is caught
+  before a reader copies it.
+
+### Fixed
+
+- The README's JavaScript example imported a default `init` and called
+  `await init()`. This package has no default export -- it initialises when it
+  is imported, in Node and in bundlers alike -- so the example threw
+  `init is not a function` on its first line. It now imports the functions
+  directly.
+
 ## [0.17.0] - 2026-09-29
 
 ### Changed
