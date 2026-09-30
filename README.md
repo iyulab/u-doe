@@ -45,10 +45,21 @@ for e in &effects {
 use u_doe::design::ccd::{ccd, AlphaType};
 use u_doe::analysis::rsm::{fit_rsm, steepest_ascent};
 
-let design = ccd(2, AlphaType::Rotatable, 3).unwrap();
-let responses = vec![/* measured values */];
-// let model = fit_rsm(&design, &responses).unwrap();
-// let path = steepest_ascent(&model, 5, 0.5).unwrap();
+let design = ccd(2, AlphaType::Rotatable, 3).unwrap(); // 4 factorial + 4 axial + 3 center runs
+// Measured responses, one per run -- here generated from y = 50 + 4·x1 + 2·x2 - 3·x1²
+let responses: Vec<f64> = design
+    .data
+    .iter()
+    .map(|x| 50.0 + 4.0 * x[0] + 2.0 * x[1] - 3.0 * x[0] * x[0])
+    .collect();
+
+let model = fit_rsm(&design, &responses).unwrap();
+assert!(model.r_squared > 0.999);
+assert!((model.predict(&[0.0, 0.0]).unwrap() - 50.0).abs() < 1e-9);
+
+// Five steps of 0.5 (coded units) along the path of steepest ascent
+let path = steepest_ascent(&model, 5, 0.5).unwrap();
+assert_eq!(path.len(), 5);
 ```
 
 ### Multi-response Desirability

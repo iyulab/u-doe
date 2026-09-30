@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is imported, in Node and in bundlers alike -- so the example threw
   `init is not a function` on its first line. It now imports the functions
   directly.
+- The README's response-surface example did nothing: its responses were an
+  empty list and every call was commented out. It now fits a model to
+  responses computed at the design points and follows the path of steepest
+  ascent.
+  The README's Rust examples are now compiled and run with the doc-tests,
+  so an example that stops matching the API fails CI.
 
 ## [0.17.0] - 2026-09-29
 
