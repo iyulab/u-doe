@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The README says a browser without a bundler is not supported (the package
+  loads its `.wasm` through an ES module import, which browsers refuse), instead
+  of listing only the environments that work.
+
 ## [0.17.1] - 2026-09-30
 
 ### Changed
