@@ -215,6 +215,72 @@ fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Resul
         .map_err(|e| js_err(WireError::malformed_input(param, format!("{param}: {e}"))))
 }
 
+/// One element of a JS number array, as found.
+#[derive(Debug, Clone, PartialEq)]
+enum Element {
+    Number(f64),
+    /// Anything else, by its JS type name (`"null"`, `"string"`, …).
+    Other(String),
+}
+
+/// The values of a number array, refusing the first element that is not a
+/// finite number at its index. Kept apart from the `JsValue` walk so it runs
+/// off `wasm32`.
+fn numbers_from(
+    parameter: &str,
+    elements: impl IntoIterator<Item = Element>,
+) -> Result<Vec<f64>, WireError> {
+    let mut out = Vec::new();
+    for (i, element) in elements.into_iter().enumerate() {
+        match element {
+            Element::Number(x) if x.is_finite() => out.push(x),
+            Element::Number(value) => {
+                return Err(WireError::value_not_finite(&NonFinite {
+                    parameter: parameter.to_string(),
+                    index: Some(i),
+                    value,
+                }))
+            }
+            Element::Other(kind) => {
+                return Err(WireError {
+                    message: format!("{parameter}[{i}]: expected a number, got {kind}"),
+                    fields: json!({ "code": "malformed_input", "parameter": parameter, "index": i }),
+                })
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Reads a `number[]` or `Float64Array` argument as sent.
+///
+/// A `&[f64]` parameter would let the generated glue copy a plain array into a
+/// typed array first, so `null` would arrive as 0 and a string as NaN -- and
+/// the call would answer a question the caller never asked.
+fn read_numbers(value: &JsValue, parameter: &str) -> Result<Vec<f64>, JsValue> {
+    use wasm_bindgen::JsCast;
+    if let Some(typed) = value.dyn_ref::<js_sys::Float64Array>() {
+        return numbers_from(parameter, typed.to_vec().into_iter().map(Element::Number))
+            .map_err(js_err);
+    }
+    if !js_sys::Array::is_array(value) {
+        return Err(js_err(WireError::malformed_input(
+            parameter,
+            format!("{parameter}: expected an array of numbers or a Float64Array"),
+        )));
+    }
+    let array: &js_sys::Array = value.unchecked_ref();
+    numbers_from(
+        parameter,
+        array.iter().map(|item| match item.as_f64() {
+            Some(x) => Element::Number(x),
+            None if item.is_null() => Element::Other("null".to_string()),
+            None => Element::Other(item.js_typeof().as_string().unwrap_or_default()),
+        }),
+    )
+    .map_err(js_err)
+}
+
 /// A count passed as a JS number: a whole number >= 0. wasm-bindgen would
 /// convert it with ToInt32 -- 2.9 to 2, NaN to 0, -1 to 4294967295 -- and the
 /// call would run on a value the caller never gave.
@@ -480,11 +546,12 @@ pub fn definitive_screening(k: f64) -> Result<JsValue, JsValue> {
 #[wasm_bindgen(unchecked_return_type = "DoeAnovaResultDto")]
 pub fn doe_anova(
     #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
-    responses: &[f64],
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] responses: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] effect_names: JsValue,
 ) -> Result<JsValue, JsValue> {
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
+    let responses = read_numbers(&responses, "responses")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
     let effect_names: Vec<String> = from_js(effect_names, "effect_names")?;
 
@@ -492,7 +559,7 @@ pub fn doe_anova(
     let effect_refs: Vec<&str> = effect_names.iter().map(|s| s.as_str()).collect();
 
     let result =
-        crate::analysis::anova::doe_anova(&design, responses, &effect_refs).map_err(js_err)?;
+        crate::analysis::anova::doe_anova(&design, &responses, &effect_refs).map_err(js_err)?;
 
     let dto = DoeAnovaResultDto {
         effects: result
@@ -551,18 +618,19 @@ pub fn doe_anova(
 #[wasm_bindgen(unchecked_return_type = "LeastSquaresFitDto")]
 pub fn fit_least_squares(
     #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
-    responses: &[f64],
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] responses: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] effect_names: JsValue,
 ) -> Result<JsValue, JsValue> {
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
+    let responses = read_numbers(&responses, "responses")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
     let effect_names: Vec<String> = from_js(effect_names, "effect_names")?;
 
     let design = crate::design::DesignMatrix { data, factor_names };
     let effect_refs: Vec<&str> = effect_names.iter().map(|s| s.as_str()).collect();
 
-    let fit = crate::analysis::least_squares::fit_least_squares(&design, responses, &effect_refs)
+    let fit = crate::analysis::least_squares::fit_least_squares(&design, &responses, &effect_refs)
         .map_err(js_err)?;
 
     let dto = LeastSquaresFitDto {
@@ -808,16 +876,17 @@ struct EstimateEffectsResultDto {
 #[wasm_bindgen(unchecked_return_type = "EstimateEffectsResultDto")]
 pub fn estimate_effects(
     #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
-    responses: &[f64],
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] responses: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
     max_order: f64,
 ) -> Result<JsValue, JsValue> {
     let max_order = whole(max_order, "max_order").map_err(js_err)?;
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
+    let responses = read_numbers(&responses, "responses")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
 
     let design = crate::design::DesignMatrix { data, factor_names };
-    let effects = crate::analysis::effects::estimate_effects(&design, responses, max_order)
+    let effects = crate::analysis::effects::estimate_effects(&design, &responses, max_order)
         .map_err(js_err)?;
 
     // The only failure reachable here is "fewer than 3 distinct contrasts":
@@ -892,14 +961,15 @@ struct RsmModelDto {
 #[wasm_bindgen(unchecked_return_type = "RsmModelDto")]
 pub fn fit_rsm(
     #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
-    responses: &[f64],
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] responses: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
 ) -> Result<JsValue, JsValue> {
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
+    let responses = read_numbers(&responses, "responses")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
 
     let design = crate::design::DesignMatrix { data, factor_names };
-    let model = crate::analysis::rsm::fit_rsm(&design, responses).map_err(js_err)?;
+    let model = crate::analysis::rsm::fit_rsm(&design, &responses).map_err(js_err)?;
 
     let dto = RsmModelDto {
         terms: crate::analysis::rsm::model_terms(&design.factor_names),
@@ -931,10 +1001,11 @@ pub fn fit_rsm(
 pub fn rsm_predict(
     #[wasm_bindgen(unchecked_param_type = "number[]")] coefficients: JsValue,
     factor_count: f64,
-    coded: &[f64],
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] coded: JsValue,
 ) -> Result<Vec<f64>, JsValue> {
     let factor_count = whole(factor_count, "factor_count").map_err(js_err)?;
     let coefficients: Vec<f64> = from_js(coefficients, "coefficients")?;
+    let coded = read_numbers(&coded, "coded")?;
 
     if factor_count == 0 {
         return Err(js_err(crate::error::DoeError::ParameterOutOfRange {
@@ -1114,15 +1185,16 @@ fn parse_response_specs(
 #[wasm_bindgen(unchecked_return_type = "DesirabilityResultDto")]
 pub fn desirability(
     #[wasm_bindgen(unchecked_param_type = "ResponseSpecInput[]")] specs: JsValue,
-    responses: &[f64],
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] responses: JsValue,
 ) -> Result<JsValue, JsValue> {
     use crate::optimization::desirability::overall_desirability;
 
     let specs = parse_response_specs(specs)?;
+    let responses = read_numbers(&responses, "responses")?;
 
     // Checks the list as a whole -- empty, one response per spec, some weight
     // -- before any individual value is computed.
-    let overall = overall_desirability(&specs, responses).map_err(js_err)?;
+    let overall = overall_desirability(&specs, &responses).map_err(js_err)?;
     let individual: Vec<f64> = specs
         .iter()
         .zip(responses.iter())
@@ -1178,17 +1250,18 @@ enum DesirabilityOptimumDto {
 /// Throws an `Error` carrying `code`: everything `desirability` throws for the
 /// specifications themselves, plus `empty_responses` for no candidates,
 /// `response_count_mismatch` if `candidates.length` is not a multiple of
-/// `specs.length`, and `value_out_of_domain` (`parameter: "response"`) for a
-/// response that is not finite -- a NaN is not a score, and letting it through
-/// as 0 would report a reachable response as unreachable.
+/// `specs.length`, and `value_not_finite` (`parameter: "candidates"`, `index`)
+/// for a response that is not finite -- a NaN is not a score, and letting it
+/// through as 0 would report a reachable response as unreachable.
 #[wasm_bindgen(unchecked_return_type = "DesirabilityOptimumDto")]
 pub fn optimize_desirability(
     #[wasm_bindgen(unchecked_param_type = "ResponseSpecInput[]")] specs: JsValue,
-    candidates: &[f64],
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] candidates: JsValue,
 ) -> Result<JsValue, JsValue> {
     use crate::optimization::desirability::{optimize_desirability, DesirabilityOptimum};
 
     let specs = parse_response_specs(specs)?;
+    let candidates = read_numbers(&candidates, "candidates")?;
     if specs.is_empty() || candidates.is_empty() {
         return Err(js_err(crate::error::DoeError::EmptyResponses));
     }
@@ -1356,5 +1429,33 @@ mod dto_strictness_tests {
                 serde_json::json!({ "code": "malformed_input", "parameter": "k" })
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod number_array_tests {
+    use super::{numbers_from, Element};
+
+    #[test]
+    fn null_in_responses_is_refused_at_its_index_not_read_as_zero() {
+        let e = numbers_from(
+            "responses",
+            [Element::Number(1.0), Element::Other("null".into())],
+        )
+        .unwrap_err();
+        assert_eq!(e.fields["code"], "malformed_input");
+        assert_eq!(e.fields["parameter"], "responses");
+        assert_eq!(e.fields["index"], 1);
+    }
+
+    #[test]
+    fn a_non_finite_response_is_value_not_finite_with_its_index() {
+        let e = numbers_from("candidates", [3.0, f64::NAN].map(Element::Number)).unwrap_err();
+        assert_eq!(e.fields["code"], "value_not_finite");
+        assert_eq!(e.fields["index"], 1);
+        assert_eq!(
+            numbers_from("coded", [0.5, -1.0].map(Element::Number)).unwrap(),
+            vec![0.5, -1.0]
+        );
     }
 }

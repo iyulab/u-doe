@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking (WASM):** the number arrays — `responses` (`doe_anova`,
+  `fit_least_squares`, `estimate_effects`, `fit_rsm`, `desirability`),
+  `coded` (`rsm_predict`) and `candidates` (`optimize_desirability`) — are
+  read as sent. Before, the generated glue copied a plain array into a typed
+  array, so `null` became `0` and a string `NaN`, and the analysis ran on a
+  value nobody measured. An element that is not a number now throws
+  `malformed_input` and a NaN or ±Infinity `value_not_finite`, both with
+  `parameter` and `index`; the arrays are declared `number[] | Float64Array`.
+  A NaN candidate in `optimize_desirability` was `value_out_of_domain`
+  (`parameter: "response"`) and is now `value_not_finite` like every other
+  non-finite argument.
+
 ## [0.18.0] - 2026-10-03
 
 ### Fixed

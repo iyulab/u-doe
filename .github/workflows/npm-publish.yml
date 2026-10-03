@@ -167,7 +167,11 @@ jobs:
           opt = m.optimize_desirability(maxSpec(200, 300), Float64Array.from([10, 50, 90]))
           ok(opt.kind === 'infeasible' && JSON.stringify(opt.unreachable) === '[0]', `infeasible: ${JSON.stringify(opt)}`)
           e = refusal(() => m.optimize_desirability(maxSpec(0, 100), Float64Array.from([10, NaN])))
-          ok(e.code === 'value_out_of_domain', `a NaN is not a score: ${e.code}`)
+          ok(e.code === 'value_not_finite' && e.index === 1, `a NaN is not a score: ${e.code}@${e.index}`)
+          // A number array is read as sent: null is refused at its index, not
+          // scored as 0 by the glue's typed-array copy.
+          e = refusal(() => m.optimize_desirability(maxSpec(0, 100), [10, null]))
+          ok(e.code === 'malformed_input' && e.index === 1 && e.parameter === 'candidates', `null candidate: ${e.code}@${e.index}`)
 
           // An absent value is null, with its key present.
           const f2 = m.full_factorial(2)

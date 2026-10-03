@@ -153,10 +153,10 @@ declarations are generated from the same structs the binding reads and
 serialises, so they cannot drift from what it actually accepts and returns:
 
 ```ts
-export function estimate_effects(design: number[][], responses: Float64Array,
+export function estimate_effects(design: number[][], responses: number[] | Float64Array,
   factor_names: string[], max_order: number): EstimateEffectsResultDto;
 export function desirability(specs: ResponseSpecInput[],
-  responses: Float64Array): DesirabilityResultDto;
+  responses: number[] | Float64Array): DesirabilityResultDto;
 export function ccd(k: number, design_type: "FaceCentered" | "Rotatable" | "Inscribed",
   n_center: number): DesignMatrixDto;
 ```
@@ -172,6 +172,11 @@ const d = full_factorial(3);
 estimate_effects(d, y, d.factor_names, 2);       // error: DesignMatrixDto is not number[][]
 estimate_effects(d.data, y, d.factor_names, 2);  // ok
 ```
+
+A number array (`responses`, `coded`, `candidates`) is read as sent: an element
+that is not a number (`null`, a string) throws `malformed_input` and a NaN or
+±Infinity `value_not_finite`, each with `parameter` and `index` — `null` is not
+analysed as 0.
 
 The binding still validates every input at the boundary, for JavaScript
 callers and for values that reach it through a cast.
@@ -319,7 +324,7 @@ the run count doubles with every additional component.
 
 Perform DOE ANOVA on a coded design matrix.
 
-**Input:** `design`: `[[f64]]`, `responses`: `Float64Array`, `factor_names`: `["A","B"]`, `effect_names`: `["A","B","A:B"]`
+**Input:** `design`: `[[f64]]`, `responses`: `number[]` or `Float64Array`, `factor_names`: `["A","B"]`, `effect_names`: `["A","B","A:B"]`
 
 Interaction effect names join factor names with `":"` (e.g. `"A:B"`). An unknown entry in `effect_names` is an error (since 0.5.0; previously silently skipped).
 
@@ -360,7 +365,7 @@ Compute Taguchi S/N ratios. `responses`: `[[f64]]` (replicates per run). `goal`:
 
 Estimate main effects and interactions for a 2-level factorial design.
 
-**Input:** `design`: `[[f64]]` (runs x factors, coded -1/+1), `responses`: `Float64Array`,
+**Input:** `design`: `[[f64]]` (runs x factors, coded -1/+1), `responses`: `number[]` or `Float64Array`,
 `factor_names`: `["A","B","C"]`, `max_order`: highest interaction order. A generated design
 is an object; pass its `data`, not the object itself:
 
@@ -454,7 +459,7 @@ Compute the steepest ascent path from a fitted RSM model.
 
 Compute Derringer-Suich desirability for multiple responses.
 
-**Input:** `specs`: `[{ "goal": "Maximize"|"Minimize"|"Target", "lower": 0, "target": 100, "upper": 100, "s1": 1, "s2": 1, "importance": 1 }]`, `responses`: `Float64Array`
+**Input:** `specs`: `[{ "goal": "Maximize"|"Minimize"|"Target", "lower": 0, "target": 100, "upper": 100, "s1": 1, "s2": 1, "importance": 1 }]`, `responses`: `number[]` or `Float64Array`
 
 `s1`/`s2` are curve-shape exponents (`s = 1` linear, `> 1` convex/stricter, `< 1` concave). `importance` (optional, default `1`) is the Derringer-Suich response weight rᵢ — it is **distinct from** the shape exponents: raise `importance` to make a response count more in the aggregate, not to reshape its curve.
 
@@ -502,8 +507,8 @@ importance 0 is left out of D and is never listed.
 Ties go to the first strictly best candidate. Errors: everything `desirability`
 throws, plus `empty_responses` for no candidates, `response_count_mismatch` when
 `candidates.length` is not a multiple of `specs.length`, and
-`value_out_of_domain` (`parameter: "response"`) for a response that is not
-finite.
+`value_not_finite` (`parameter: "candidates"`, `index`) for a response that is
+not finite.
 
 #### `two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha, model_terms?) -> f64`
 
