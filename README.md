@@ -15,7 +15,7 @@ Design of Experiments (DOE) library for Rust — classical design generation, ef
 
 ```toml
 [dependencies]
-u-doe = "0.17"
+u-doe = "0.18"
 ```
 
 ## Examples
