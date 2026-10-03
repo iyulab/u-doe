@@ -23,6 +23,7 @@ use crate::error::DoeError;
 
 /// A refusal on its way to JavaScript: the text for `Error.message`, and the
 /// fields -- `code` first among them -- copied onto the `Error`.
+#[derive(Debug)]
 struct WireError {
     message: String,
     fields: serde_json::Value,
@@ -214,6 +215,20 @@ fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Resul
         .map_err(|e| js_err(WireError::malformed_input(param, format!("{param}: {e}"))))
 }
 
+/// A count passed as a JS number: a whole number >= 0. wasm-bindgen would
+/// convert it with ToInt32 -- 2.9 to 2, NaN to 0, -1 to 4294967295 -- and the
+/// call would run on a value the caller never gave.
+fn whole(value: f64, parameter: &str) -> Result<usize, WireError> {
+    if value.is_finite() && value >= 0.0 && value.fract() == 0.0 && value <= u32::MAX as f64 {
+        Ok(value as usize)
+    } else {
+        Err(WireError::malformed_input(
+            parameter,
+            format!("{parameter} must be a whole number >= 0, got {value}"),
+        ))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // DTO types
 // ---------------------------------------------------------------------------
@@ -344,7 +359,8 @@ struct PureErrorDto {
 /// # Errors
 /// Throws an `Error` carrying `code` if `k` is out of range (2..=7).
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
-pub fn full_factorial(k: usize) -> Result<JsValue, JsValue> {
+pub fn full_factorial(k: f64) -> Result<JsValue, JsValue> {
+    let k = whole(k, "k").map_err(js_err)?;
     let design = crate::design::factorial::full_factorial(k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -362,11 +378,13 @@ pub fn full_factorial(k: usize) -> Result<JsValue, JsValue> {
 /// or `design_type` is unrecognised.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn ccd(
-    k: usize,
+    k: f64,
     #[wasm_bindgen(unchecked_param_type = "\"FaceCentered\" | \"Rotatable\" | \"Inscribed\"")]
     design_type: &str,
-    n_center: usize,
+    n_center: f64,
 ) -> Result<JsValue, JsValue> {
+    let k = whole(k, "k").map_err(js_err)?;
+    let n_center = whole(n_center, "n_center").map_err(js_err)?;
     let alpha_type = match design_type {
         "FaceCentered" => crate::design::ccd::AlphaType::FaceCentered,
         "Rotatable" => crate::design::ccd::AlphaType::Rotatable,
@@ -392,7 +410,9 @@ pub fn ccd(
 /// # Errors
 /// Throws an `Error` carrying `code` if `k` is not 3, 4, or 5, or `n_center == 0`.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
-pub fn box_behnken(k: usize, n_center: usize) -> Result<JsValue, JsValue> {
+pub fn box_behnken(k: f64, n_center: f64) -> Result<JsValue, JsValue> {
+    let k = whole(k, "k").map_err(js_err)?;
+    let n_center = whole(n_center, "n_center").map_err(js_err)?;
     let design = crate::design::box_behnken::box_behnken(k, n_center).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -413,8 +433,9 @@ pub fn taguchi_array(
         unchecked_param_type = "\"L4\" | \"L8\" | \"L9\" | \"L12\" | \"L16\" | \"L18\" | \"L27\""
     )]
     name: &str,
-    k: usize,
+    k: f64,
 ) -> Result<JsValue, JsValue> {
+    let k = whole(k, "k").map_err(js_err)?;
     let design = crate::design::taguchi::taguchi_array(name, k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -426,7 +447,8 @@ pub fn taguchi_array(
 /// # Errors
 /// Throws an `Error` carrying `code` if `k` is out of the supported range.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
-pub fn definitive_screening(k: usize) -> Result<JsValue, JsValue> {
+pub fn definitive_screening(k: f64) -> Result<JsValue, JsValue> {
+    let k = whole(k, "k").map_err(js_err)?;
     let design = crate::design::definitive_screening(k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -625,7 +647,9 @@ pub fn signal_to_noise(
 /// # Errors
 /// Throws an `Error` carrying `code` if the (k, p) combination is not in the standard table.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
-pub fn fractional_factorial(k: usize, p: usize) -> Result<JsValue, JsValue> {
+pub fn fractional_factorial(k: f64, p: f64) -> Result<JsValue, JsValue> {
+    let k = whole(k, "k").map_err(js_err)?;
+    let p = whole(p, "p").map_err(js_err)?;
     let design = crate::design::factorial::fractional_factorial(k, p).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -646,7 +670,9 @@ pub fn fractional_factorial(k: usize, p: usize) -> Result<JsValue, JsValue> {
 /// # Errors
 /// Throws an `Error` carrying `code` if the (k, p) combination is not in the standard table.
 #[wasm_bindgen(unchecked_return_type = "FractionalInfoDto")]
-pub fn fractional_factorial_info(k: usize, p: usize) -> Result<JsValue, JsValue> {
+pub fn fractional_factorial_info(k: f64, p: f64) -> Result<JsValue, JsValue> {
+    let k = whole(k, "k").map_err(js_err)?;
+    let p = whole(p, "p").map_err(js_err)?;
     let info = crate::design::factorial::fractional_factorial_info(k, p).map_err(js_err)?;
     to_js(&FractionalInfoDto::from(info))
 }
@@ -675,7 +701,8 @@ pub fn standard_fractions() -> Result<JsValue, JsValue> {
 /// # Errors
 /// Throws an `Error` carrying `code` if `k == 0` or `k > 19`.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
-pub fn plackett_burman(k: usize) -> Result<JsValue, JsValue> {
+pub fn plackett_burman(k: f64) -> Result<JsValue, JsValue> {
+    let k = whole(k, "k").map_err(js_err)?;
     let design = crate::design::plackett_burman::plackett_burman(k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -690,7 +717,9 @@ pub fn plackett_burman(k: usize) -> Result<JsValue, JsValue> {
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 /// Factor names are "X1", "X2", ..., "Xq".
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
-pub fn simplex_lattice(q: usize, m: usize) -> Result<JsValue, JsValue> {
+pub fn simplex_lattice(q: f64, m: f64) -> Result<JsValue, JsValue> {
+    let q = whole(q, "q").map_err(js_err)?;
+    let m = whole(m, "m").map_err(js_err)?;
     let design = crate::design::mixture::simplex_lattice(q, m).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -704,7 +733,8 @@ pub fn simplex_lattice(q: usize, m: usize) -> Result<JsValue, JsValue> {
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 /// Factor names are "X1", "X2", ..., "Xq".
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
-pub fn simplex_centroid(q: usize) -> Result<JsValue, JsValue> {
+pub fn simplex_centroid(q: f64) -> Result<JsValue, JsValue> {
+    let q = whole(q, "q").map_err(js_err)?;
     let design = crate::design::mixture::simplex_centroid(q).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -780,8 +810,9 @@ pub fn estimate_effects(
     #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
     responses: &[f64],
     #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
-    max_order: usize,
+    max_order: f64,
 ) -> Result<JsValue, JsValue> {
+    let max_order = whole(max_order, "max_order").map_err(js_err)?;
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
 
@@ -899,9 +930,10 @@ pub fn fit_rsm(
 #[wasm_bindgen]
 pub fn rsm_predict(
     #[wasm_bindgen(unchecked_param_type = "number[]")] coefficients: JsValue,
-    factor_count: usize,
+    factor_count: f64,
     coded: &[f64],
 ) -> Result<Vec<f64>, JsValue> {
+    let factor_count = whole(factor_count, "factor_count").map_err(js_err)?;
     let coefficients: Vec<f64> = from_js(coefficients, "coefficients")?;
 
     if factor_count == 0 {
@@ -955,10 +987,12 @@ struct SteepestAscentResultDto {
 #[wasm_bindgen(unchecked_return_type = "SteepestAscentResultDto")]
 pub fn steepest_ascent(
     #[wasm_bindgen(unchecked_param_type = "number[]")] coefficients: JsValue,
-    factor_count: usize,
-    n_steps: usize,
+    factor_count: f64,
+    n_steps: f64,
     step_size: f64,
 ) -> Result<JsValue, JsValue> {
+    let factor_count = whole(factor_count, "factor_count").map_err(js_err)?;
+    let n_steps = whole(n_steps, "n_steps").map_err(js_err)?;
     let coefficients: Vec<f64> = from_js(coefficients, "coefficients")?;
 
     let model = crate::analysis::rsm::RsmModel {
@@ -1218,14 +1252,21 @@ pub fn optimize_desirability(
 /// * `model_terms` — terms in the fitted model besides the mean (optional)
 #[wasm_bindgen]
 pub fn two_level_factorial_power(
-    k: usize,
-    p: usize,
-    n_replicates: usize,
+    k: f64,
+    p: f64,
+    n_replicates: f64,
     effect_size: f64,
     sigma: f64,
     alpha: f64,
-    model_terms: Option<usize>,
+    model_terms: Option<f64>,
 ) -> Result<f64, JsValue> {
+    let k = whole(k, "k").map_err(js_err)?;
+    let p = whole(p, "p").map_err(js_err)?;
+    let n_replicates = whole(n_replicates, "n_replicates").map_err(js_err)?;
+    let model_terms = model_terms
+        .map(|v| whole(v, "model_terms"))
+        .transpose()
+        .map_err(js_err)?;
     crate::power::two_level_factorial_power(
         k,
         p,
@@ -1302,5 +1343,18 @@ mod dto_strictness_tests {
         assert!(wire
             .iter()
             .any(|(k, p, r, _)| (*k, *p) == (7, 1) && r == "VII"));
+    }
+
+    /// A count arriving as a JS number is taken only when it is one.
+    #[test]
+    fn a_count_must_be_a_whole_number() {
+        assert_eq!(super::whole(3.0, "k").expect("whole"), 3);
+        for bad in [2.9, -1.0, f64::NAN, f64::INFINITY] {
+            let err = super::whole(bad, "k").expect_err("not a count");
+            assert_eq!(
+                err.fields,
+                serde_json::json!({ "code": "malformed_input", "parameter": "k" })
+            );
+        }
     }
 }

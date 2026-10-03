@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Breaking (WASM):** a count (`k`, `p`, `n_center`, `q`, `m`, `max_order`,
+  `factor_count`, `n_steps`, `n_replicates`, `model_terms`) that is not a whole
+  number ≥ 0 is refused with `malformed_input`. wasm-bindgen converted the JS
+  number with ToInt32, so `full_factorial(2.9)` built a 2-factor design and
+  `-1` arrived as 4294967295.
+- `steepest_ascent` refuses a `step_size` that is not finite and > 0
+  (`value_out_of_domain`); 0, negative and NaN were accepted.
+
 ## [0.17.3] - 2026-10-03
 
 ### Fixed

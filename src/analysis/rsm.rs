@@ -206,6 +206,14 @@ pub fn steepest_ascent(
             got: model.coefficients.len(),
         });
     }
+    if !(step_size.is_finite() && step_size > 0.0) {
+        return Err(DoeError::ValueOutOfDomain {
+            index: None,
+            parameter: "step_size",
+            value: step_size,
+            domain: "finite and > 0",
+        });
+    }
     // Linear coefficients: indices 1..=k in coefficients vector
     let linear = &model.coefficients[1..=k];
 
@@ -529,5 +537,23 @@ mod tests {
         // Fewer responses than runs
         let responses = vec![1.0, 2.0];
         assert!(fit_rsm(&design, &responses).is_err());
+    }
+
+    #[test]
+    fn steepest_ascent_refuses_a_step_size_that_is_not_positive() {
+        let model = RsmModel {
+            coefficients: vec![1.0, 2.0, 0.0],
+            r_squared: 1.0,
+            factor_count: 1,
+        };
+        for bad in [0.0, -0.5, f64::NAN] {
+            assert!(matches!(
+                steepest_ascent(&model, 3, bad),
+                Err(DoeError::ValueOutOfDomain {
+                    parameter: "step_size",
+                    ..
+                })
+            ));
+        }
     }
 }
