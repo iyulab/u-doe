@@ -215,6 +215,7 @@ try {
 | `unsupported_fraction` | `k`, `p`, `supported` (`[[k, p], ...]`) | 2^(k-p) not in the standard table — see `standard_fractions()` |
 | `unknown_array` | `array`, `supported` | No Taguchi array of that name |
 | `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
+| `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
 | `malformed_input` | `parameter` | An argument of the wrong shape or type, or a JSON string |
 | `empty_design` | `runs`, `factors` | No runs or no factors |
 | `design_shape_mismatch` | `run`, `expected`, `got` | A run whose length differs from the number of factor names |
