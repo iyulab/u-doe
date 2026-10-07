@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- WebAssembly: a value of the wrong type inside an argument -- a `null` or a
+  string where a number belongs (a cell of `design`), or a missing field -- is refused as
+  `malformed_input` with `parameter` naming the field and `index` its position in
+  its array. It named only the argument ("invalid type: null, expected f64"),
+  so a caller could not say which row was wrong.
+
 ## [0.19.1] - 2026-10-07
 
 Depends on u-numflow 0.9. No other change.
