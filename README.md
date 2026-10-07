@@ -222,9 +222,9 @@ try {
 | `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
 | `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
 | `malformed_input` | `parameter` | An argument of the wrong shape or type, or a JSON string |
-| `empty_design` | `runs`, `factors` | No runs or no factors |
-| `design_shape_mismatch` | `run`, `expected`, `got` | A run whose length differs from the number of factor names |
-| `response_count_mismatch` | `expected`, `got` | Not one response per run (per spec, for `desirability`) |
+| `empty_design` | `runs`, `factors`, `parameter` (`"design"`) | No runs or no factors |
+| `design_shape_mismatch` | `run`, `expected`, `got`, `parameter` (`"design"`), `index` (= `run`) | A run whose length differs from the number of factor names |
+| `response_count_mismatch` | `expected`, `got`, `parameter` (`"responses"`, or `"candidates"` for `optimize_desirability`) | Not one response per run (per spec, for `desirability`) |
 | `unknown_effect` | `effect` | An effect name that is not factor names joined with `":"` |
 | `not_two_level_coded` | `run`, `factor`, `value` | An entry other than `-1`/`+1` where the analysis needs two levels |
 | `aliased_effects` | `first`, `second` | Two terms share a contrast column; `second` is `"I"` when `first` is constant (one level left) |
@@ -236,7 +236,7 @@ try {
 | `too_few_replicates` | `run`, `needed`, `got` | `signal_to_noise`: a run with too few measurements for the goal |
 | `non_positive_response` | `run`, `value` | `signal_to_noise` `LargerIsBetter`: a response ≤ 0 |
 | `empty_responses` | — | `signal_to_noise` with no runs, `desirability` with no specs |
-| `invalid_desirability_limits` | `index`, `goal`, `lower`, `target`, `upper` | A spec whose ramp has no width or runs backwards (see `desirability`) |
+| `invalid_desirability_limits` | `index`, `goal`, `lower`, `target`, `upper`, `parameter` (`"specs"`) | A spec whose ramp has no width or runs backwards (see `desirability`) |
 | `value_out_of_domain` | `index` (or `null`), `parameter`, `value`, `domain` | A real value outside its meaning: `s1`/`s2` not positive, `importance` negative, `effect_size`/`sigma` not positive, `alpha` not in (0, 1) |
 | `no_weighted_response` | — | Every spec has `importance` 0 |
 

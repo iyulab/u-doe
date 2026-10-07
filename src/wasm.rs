@@ -31,10 +31,33 @@ struct WireError {
 
 impl From<DoeError> for WireError {
     fn from(e: DoeError) -> Self {
+        // `DoeError` serializes as `{ code, ...fields }` (see its docs). The
+        // library does not know the names of the arguments it was handed; the
+        // binding does, so a refusal about one argument says which one here --
+        // the `parameter` every other refusal carries (and, for a bad run of
+        // the design, that run as `index`).
+        let mut fields = serde_json::to_value(&e).expect("DoeError serializes to JSON");
+        let (parameter, index) = match &e {
+            DoeError::EmptyDesign { .. } => (Some("design"), None),
+            DoeError::DesignShapeMismatch { run, .. } => (Some("design"), Some(*run)),
+            DoeError::ResponseCountMismatch { .. } => (Some("responses"), None),
+            DoeError::PointDimensionMismatch { .. } => (Some("coded"), None),
+            DoeError::InvalidDesirabilityLimits { .. } => (Some("specs"), None),
+            _ => (None, None),
+        };
+        if let Some(parameter) = parameter {
+            if fields.get("parameter").is_none() {
+                fields["parameter"] = json!(parameter);
+            }
+        }
+        if let Some(index) = index {
+            if fields.get("index").is_none() {
+                fields["index"] = json!(index);
+            }
+        }
         WireError {
             message: e.to_string(),
-            // `DoeError` serializes as `{ code, ...fields }` (see its docs).
-            fields: serde_json::to_value(&e).expect("DoeError serializes to JSON"),
+            fields,
         }
     }
 }
@@ -1322,10 +1345,13 @@ pub fn optimize_desirability(
         return Err(js_err(crate::error::DoeError::EmptyResponses));
     }
     if candidates.len() % specs.len() != 0 {
-        return Err(js_err(crate::error::DoeError::ResponseCountMismatch {
+        let mut e = WireError::from(crate::error::DoeError::ResponseCountMismatch {
             expected: specs.len(),
             got: candidates.len() % specs.len(),
-        }));
+        });
+        // The mismatch is in the candidates, not in a responses argument.
+        e.fields["parameter"] = json!("candidates");
+        return Err(js_err(e));
     }
 
     let rows: Vec<Vec<f64>> = candidates
@@ -1531,5 +1557,41 @@ mod path_tests {
         assert_eq!(err.fields["code"], "malformed_input");
         assert_eq!(err.fields["parameter"], "design[1]");
         assert_eq!(err.fields["index"], 1);
+    }
+
+    /// A refusal about one argument names it, beside the values the library
+    /// reports (C466): the library cannot know the argument's name, the
+    /// binding can.
+    #[test]
+    fn a_shape_refusal_names_its_argument() {
+        use crate::error::DoeError;
+        let e = super::WireError::from(DoeError::DesignShapeMismatch {
+            run: 2,
+            expected: 3,
+            got: 2,
+        });
+        assert_eq!(e.fields["code"], "design_shape_mismatch");
+        assert_eq!(
+            (e.fields["parameter"].as_str(), e.fields["index"].as_u64()),
+            (Some("design"), Some(2))
+        );
+        let e = super::WireError::from(DoeError::ResponseCountMismatch {
+            expected: 8,
+            got: 7,
+        });
+        assert_eq!(e.fields["parameter"], "responses");
+        let e = super::WireError::from(DoeError::EmptyDesign {
+            runs: 0,
+            factors: 2,
+        });
+        assert_eq!(e.fields["parameter"], "design");
+        // A variant that names its own parameter keeps it.
+        let e = super::WireError::from(DoeError::ParameterOutOfRange {
+            parameter: "n_center",
+            min: 1,
+            max: None,
+            got: 0,
+        });
+        assert_eq!(e.fields["parameter"], "n_center");
     }
 }
