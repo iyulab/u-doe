@@ -852,7 +852,7 @@ mod tests {
         assert_eq!(result.residual_df, 0);
         assert!(
             result.residual_ss.abs() < 1e-9,
-            "an exactly saturated model explains the whole total sum of squares,              so the residual is zero rather than a clamped negative: got {}",
+            "an exactly saturated model explains the whole total sum of squares, so the residual is zero rather than a clamped negative: got {}",
             result.residual_ss
         );
     }
