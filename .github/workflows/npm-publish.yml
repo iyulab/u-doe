@@ -132,7 +132,8 @@ jobs:
           ok(e.code === 'invalid_desirability_limits' && e.index === 1 && e.goal === 'Target', `code=${e.code} index=${e.index}`)
 
           e = refusal(() => m.two_level_factorial_power(3, 0, 2, 1, 1, 2))
-          ok(e.code === 'value_out_of_domain' && e.parameter === 'alpha', `code=${e.code} parameter=${e.parameter}`)
+          ok(e.code === 'parameter_out_of_range' && e.parameter === 'alpha' && e.exclusive_min === 0 && e.exclusive_max === 1 && e.got === 0,
+            `code=${e.code} parameter=${e.parameter} exclusive_min=${e.exclusive_min} exclusive_max=${e.exclusive_max} got=${e.got}`)
 
           // Power is the noncentral t test with the model's error df (0.648 here;
           // the normal approximation said 0.760), and an unreplicated full model
