@@ -33,27 +33,13 @@ struct WireError {
 
 impl From<DoeError> for WireError {
     fn from(e: DoeError) -> Self {
-        // `DoeError` serializes as `{ code, ...fields }` (see its docs). The
-        // library does not know the names of the arguments it was handed; the
-        // binding does, so a refusal about one argument says which one here --
-        // the `parameter` every other refusal carries (and, for a bad run of
-        // the design, that run as `index`).
+        // `DoeError` serializes as `{ code, ...fields }` (see its docs). A
+        // variant that does not carry the argument it is about gets it here, so
+        // every refusal about one argument says which one.
         let mut fields = serde_json::to_value(&e).expect("DoeError serializes to JSON");
-        let (parameter, index) = match &e {
-            DoeError::DesignShapeMismatch { run, .. } => (Some("design"), Some(*run)),
-            DoeError::ResponseCountMismatch { .. } => (Some("responses"), None),
-            DoeError::PointDimensionMismatch { .. } => (Some("coded"), None),
-            DoeError::InvalidDesirabilityLimits { .. } => (Some("specs"), None),
-            _ => (None, None),
-        };
-        if let Some(parameter) = parameter {
+        if let DoeError::InvalidDesirabilityLimits { .. } = &e {
             if fields.get("parameter").is_none() {
-                fields["parameter"] = json!(parameter);
-            }
-        }
-        if let Some(index) = index {
-            if fields.get("index").is_none() {
-                fields["index"] = json!(index);
+                fields["parameter"] = json!("specs");
             }
         }
         WireError {
@@ -1129,9 +1115,13 @@ pub fn rsm_predict(
         )));
     }
     if coded.len() % factor_count != 0 {
-        return Err(js_err(crate::error::DoeError::PointDimensionMismatch {
+        // The last point is the short one: `index` is its position among the points.
+        return Err(js_err(DoeError::DimensionMismatch {
+            parameter: "coded",
+            index: Some(coded.len() / factor_count),
             expected: factor_count,
             got: coded.len() % factor_count,
+            counted: "one coordinate per factor",
         }));
     }
 
@@ -1391,13 +1381,14 @@ pub fn optimize_desirability(
         }));
     }
     if candidates.len() % specs.len() != 0 {
-        let mut e = WireError::from(crate::error::DoeError::ResponseCountMismatch {
+        // The last candidate is the short one: `index` is its position.
+        return Err(js_err(DoeError::DimensionMismatch {
+            parameter: "candidates",
+            index: Some(candidates.len() / specs.len()),
             expected: specs.len(),
             got: candidates.len() % specs.len(),
-        });
-        // The mismatch is in the candidates, not in a responses argument.
-        e.fields["parameter"] = json!("candidates");
-        return Err(js_err(e));
+            counted: "one response per specification",
+        }));
     }
 
     let rows: Vec<Vec<f64>> = candidates
@@ -1714,21 +1705,27 @@ mod path_tests {
     #[test]
     fn a_shape_refusal_names_its_argument() {
         use crate::error::DoeError;
-        let e = super::WireError::from(DoeError::DesignShapeMismatch {
-            run: 2,
+        let e = super::WireError::from(DoeError::DimensionMismatch {
+            parameter: "design",
+            index: Some(2),
             expected: 3,
             got: 2,
+            counted: "one entry per factor",
         });
-        assert_eq!(e.fields["code"], "design_shape_mismatch");
+        assert_eq!(e.fields["code"], "dimension_mismatch");
         assert_eq!(
             (e.fields["parameter"].as_str(), e.fields["index"].as_u64()),
             (Some("design"), Some(2))
         );
-        let e = super::WireError::from(DoeError::ResponseCountMismatch {
-            expected: 8,
-            got: 7,
-        });
-        assert_eq!(e.fields["parameter"], "responses");
+        assert_eq!(
+            (e.fields["expected"].as_u64(), e.fields["got"].as_u64()),
+            (Some(3), Some(2))
+        );
+        assert!(e.fields.get("counted").is_none(), "{}", e.fields);
+        assert_eq!(
+            e.message,
+            "design[2]: got 2, expected 3 (one entry per factor)"
+        );
         // A variant that names its own parameter keeps it.
         let e = super::WireError::from(DoeError::count_out_of_range("n_center", 1.., 0));
         assert_eq!(e.fields["parameter"], "n_center");

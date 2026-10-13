@@ -76,14 +76,23 @@ pub enum DoeError {
         array: String,
         supported: &'static [&'static str],
     },
-    /// A run has a different number of entries from the number of factor names.
-    DesignShapeMismatch {
-        run: usize,
+    /// Two lengths that must agree do not: `parameter` holds `got` items where
+    /// `expected` belong -- a run of the design with another number of entries
+    /// than there are factors (`design`, `index` = the run), not one response
+    /// per run (`responses`), a candidate with another number of responses than
+    /// there are specifications (`candidates`, `index` = the candidate), a
+    /// point with another number of coordinates than the model has factors, a
+    /// coefficient list that is not a full quadratic model's. `counted` says
+    /// what one item is, for the message.
+    DimensionMismatch {
+        parameter: &'static str,
+        #[cfg_attr(feature = "wasm", serde(skip_serializing_if = "Option::is_none"))]
+        index: Option<usize>,
         expected: usize,
         got: usize,
+        #[cfg_attr(feature = "wasm", serde(skip))]
+        counted: &'static str,
     },
-    /// The number of responses differs from the number of runs.
-    ResponseCountMismatch { expected: usize, got: usize },
     /// Effect name not found among the effects estimable for the design.
     UnknownEffect { effect: String },
     /// An effect refers to a factor column the design does not have.
@@ -119,16 +128,6 @@ pub enum DoeError {
     /// The model matrix is singular: its columns are linearly dependent over
     /// the runs given, so the coefficients are not identifiable.
     SingularModel,
-    /// A response-surface model whose coefficient list does not have the
-    /// length a full quadratic model in `factors` factors has.
-    CoefficientCountMismatch {
-        factors: usize,
-        expected: usize,
-        got: usize,
-    },
-    /// A point given to a fitted model has a different number of coordinates
-    /// from the model's factors.
-    PointDimensionMismatch { expected: usize, got: usize },
     /// A coding range whose low end is not below its high end.
     InvalidCodingRange { low: f64, high: f64 },
     /// A response that must be strictly positive is not.
@@ -238,8 +237,7 @@ impl DoeError {
             DoeError::InsufficientData { .. } => "insufficient_data",
             DoeError::UnsupportedFraction { .. } => "unsupported_fraction",
             DoeError::UnknownArray { .. } => "unknown_array",
-            DoeError::DesignShapeMismatch { .. } => "design_shape_mismatch",
-            DoeError::ResponseCountMismatch { .. } => "response_count_mismatch",
+            DoeError::DimensionMismatch { .. } => "dimension_mismatch",
             DoeError::UnknownEffect { .. } => "unknown_effect",
             DoeError::EffectOutsideDesign { .. } => "effect_outside_design",
             DoeError::NotTwoLevelCoded { .. } => "not_two_level_coded",
@@ -248,8 +246,6 @@ impl DoeError {
             DoeError::OverSpecifiedModel { .. } => "over_specified_model",
             DoeError::NoErrorDegreesOfFreedom { .. } => "no_error_degrees_of_freedom",
             DoeError::SingularModel => "singular_model",
-            DoeError::CoefficientCountMismatch { .. } => "coefficient_count_mismatch",
-            DoeError::PointDimensionMismatch { .. } => "point_dimension_mismatch",
             DoeError::InvalidCodingRange { .. } => "invalid_coding_range",
             DoeError::NonPositiveResponse { .. } => "non_positive_response",
             DoeError::InvalidDesirabilityLimits { .. } => "invalid_desirability_limits",
@@ -312,12 +308,18 @@ impl std::fmt::Display for DoeError {
                 "unknown Taguchi array '{array}'; supported: {}",
                 supported.join(", ")
             ),
-            DoeError::DesignShapeMismatch { run, expected, got } => write!(
-                f,
-                "run {run} has {got} entries but the design names {expected} factors"
-            ),
-            DoeError::ResponseCountMismatch { expected, got } => {
-                write!(f, "got {got} responses where {expected} were expected")
+            DoeError::DimensionMismatch {
+                parameter,
+                index,
+                expected,
+                got,
+                counted,
+            } => {
+                write!(f, "{parameter}")?;
+                if let Some(i) = index {
+                    write!(f, "[{i}]")?;
+                }
+                write!(f, ": got {got}, expected {expected} ({counted})")
             }
             DoeError::UnknownEffect { effect } => write!(
                 f,
@@ -380,18 +382,6 @@ impl std::fmt::Display for DoeError {
                 f,
                 "model matrix is singular: its columns are linearly dependent over these \
                  runs, so the coefficients cannot be identified; add runs or drop terms"
-            ),
-            DoeError::CoefficientCountMismatch {
-                factors,
-                expected,
-                got,
-            } => write!(
-                f,
-                "a quadratic model in {factors} factors has {expected} coefficients, got {got}"
-            ),
-            DoeError::PointDimensionMismatch { expected, got } => write!(
-                f,
-                "the model has {expected} factors but the point has {got} coordinates"
             ),
             DoeError::InvalidCodingRange { low, high } => {
                 write!(f, "low ({low}) must be strictly less than high ({high})")
@@ -488,14 +478,19 @@ mod tests {
             DoeError::EmptyInput {
                 parameter: "design",
             },
-            DoeError::DesignShapeMismatch {
-                run: 1,
+            DoeError::DimensionMismatch {
+                parameter: "design",
+                index: Some(1),
                 expected: 3,
                 got: 2,
+                counted: "one entry per factor",
             },
-            DoeError::ResponseCountMismatch {
+            DoeError::DimensionMismatch {
+                parameter: "responses",
+                index: None,
                 expected: 8,
                 got: 7,
+                counted: "one response per run",
             },
             DoeError::UnknownEffect { effect: "Z".into() },
             DoeError::EffectOutsideDesign {
@@ -526,14 +521,12 @@ mod tests {
             DoeError::OverSpecifiedModel { terms: 9, runs: 8 },
             DoeError::NoErrorDegreesOfFreedom { terms: 7, runs: 8 },
             DoeError::SingularModel,
-            DoeError::CoefficientCountMismatch {
-                factors: 2,
+            DoeError::DimensionMismatch {
+                parameter: "coefficients",
+                index: None,
                 expected: 6,
                 got: 2,
-            },
-            DoeError::PointDimensionMismatch {
-                expected: 2,
-                got: 3,
+                counted: "the terms of a full quadratic model in the model's factors",
             },
             DoeError::InsufficientData {
                 parameter: "effects",

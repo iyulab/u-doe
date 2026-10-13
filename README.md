@@ -223,8 +223,7 @@ try {
 | `malformed_input` | `parameter` | An argument of the wrong shape or type, a JSON string, or a count argument with a fraction (`k = 2.5`, "must be a whole number") |
 | `empty_input` | `parameter` | An input with nothing in it: `"design"` (no runs), `"factor_names"` (no factors), `"responses"` (`signal_to_noise` with no runs), `"specs"` (`desirability` / `optimize_desirability` with no specs), `"candidates"` (`optimize_desirability` with no candidates) |
 | `insufficient_data` | `parameter`, `min`, `got`, `index` | Fewer values than the calculation needs: `signal_to_noise` with a run of `responses` holding fewer replicate measurements than the goal needs (1, or 2 for `NominalIsBest`) — `index` is that run |
-| `design_shape_mismatch` | `run`, `expected`, `got`, `parameter` (`"design"`), `index` (= `run`) | A run whose length differs from the number of factor names |
-| `response_count_mismatch` | `expected`, `got`, `parameter` (`"responses"`, or `"candidates"` for `optimize_desirability`) | Not one response per run (per spec, for `desirability`) |
+| `dimension_mismatch` | `parameter`, `expected`, `got`, `index` | Two lengths that must agree do not — `parameter` holds `got` items where `expected` belong: `"design"` (a run with another number of entries than there are factor names; `index` is the run), `"responses"` (not one response per run, or per spec for `desirability`), `"candidates"` (`optimize_desirability`; `index` is the short candidate), `"coded"` (`rsm_predict`; `index` is the short point), `"coefficients"` (`steepest_ascent` / `rsm_predict`: not a full quadratic model in `factor_count` factors) |
 | `unknown_effect` | `effect` | An effect name that is not factor names joined with `":"` |
 | `not_two_level_coded` | `run`, `factor`, `value` | An entry other than `-1`/`+1` where the analysis needs two levels |
 | `aliased_effects` | `first`, `second` | Two terms share a contrast column; `second` is `"I"` when `first` is constant (one level left) |
@@ -232,7 +231,6 @@ try {
 | `over_specified_model` | `terms`, `runs` | More terms than the `runs - 1` degrees of freedom (`terms` excludes the mean) |
 | `no_error_degrees_of_freedom` | `terms`, `runs` | Power: the model uses all `runs - 1` degrees of freedom, leaving none to test an effect against |
 | `singular_model` | — | The runs do not support the model (e.g. a quadratic fit on a two-level design) |
-| `coefficient_count_mismatch` | `factors`, `expected`, `got` | `steepest_ascent` coefficients not of a quadratic model in that many factors |
 | `non_positive_response` | `run`, `value` | `signal_to_noise` `LargerIsBetter`: a response ≤ 0 |
 | `invalid_desirability_limits` | `index`, `goal`, `lower`, `target`, `upper`, `parameter` (`"specs"`) | A spec whose ramp has no width or runs backwards (see `desirability`) |
 | `no_weighted_response` | — | Every spec has `importance` 0 |
@@ -438,10 +436,10 @@ rsm_predict([10, 2, -3, -1.5, 0.5, 4], 2, Float64Array.from([0.5, -1]))
 // -> Float64Array [12.125]
 ```
 
-Errors: `point_dimension_mismatch` when `coded.length` is not a multiple of
-`factor_count`, `coefficient_count_mismatch` when `coefficients` is not a
-quadratic model in that many factors, `parameter_out_of_range` for
-`factor_count: 0`.
+Errors: `dimension_mismatch` when `coded.length` is not a multiple of
+`factor_count` (`parameter: "coded"`, `index` the short point) or when
+`coefficients` is not a quadratic model in that many factors
+(`parameter: "coefficients"`), `parameter_out_of_range` for `factor_count: 0`.
 
 #### `steepest_ascent(coefficients, factor_count, n_steps, step_size) -> AscentResult`
 
@@ -502,7 +500,8 @@ a user to relax the trade-off rather than move a limit. A specification with
 importance 0 is left out of D and is never listed.
 
 Ties go to the first strictly best candidate. Errors: everything `desirability`
-throws, plus `empty_input` (`parameter: "candidates"`) for no candidates, `response_count_mismatch` when
+throws, plus `empty_input` (`parameter: "candidates"`) for no candidates, `dimension_mismatch`
+(`parameter: "candidates"`, `index` the short candidate) when
 `candidates.length` is not a multiple of `specs.length`, and
 `value_not_finite` (`parameter: "candidates"`, `index`) for a response that is
 not finite.

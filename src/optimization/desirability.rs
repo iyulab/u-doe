@@ -293,7 +293,7 @@ impl ResponseSpec {
 ///
 /// # Errors
 /// [`DoeError::EmptyInput`] (`specs`) if there are no specifications;
-/// [`DoeError::ResponseCountMismatch`] unless there is one response per
+/// [`DoeError::DimensionMismatch`] unless there is one response per
 /// specification; [`DoeError::NoWeightedResponse`] if every importance is 0.
 ///
 /// # Examples
@@ -312,9 +312,12 @@ pub fn overall_desirability(specs: &[ResponseSpec], responses: &[f64]) -> Result
         return Err(DoeError::EmptyInput { parameter: "specs" });
     }
     if specs.len() != responses.len() {
-        return Err(DoeError::ResponseCountMismatch {
+        return Err(DoeError::DimensionMismatch {
+            parameter: "responses",
+            index: None,
             expected: specs.len(),
             got: responses.len(),
+            counted: "one response per specification",
         });
     }
     let sum_r: f64 = specs.iter().map(|spec| spec.importance).sum();
@@ -383,7 +386,7 @@ pub enum DesirabilityOptimum {
 /// # Errors
 /// [`DoeError::EmptyInput`] (`parameter` naming which) if `specs` or
 /// `candidates` is empty;
-/// [`DoeError::ResponseCountMismatch`] if a candidate is not one response per
+/// [`DoeError::DimensionMismatch`] if a candidate is not one response per
 /// specification; [`DoeError::ValueNotFinite`] (`parameter` `"candidates"`,
 /// `index` the response's position in the candidates laid end to end) if a
 /// response is not finite --
@@ -421,9 +424,12 @@ pub fn optimize_desirability(
     }
     for (row, candidate) in candidates.iter().enumerate() {
         if candidate.len() != specs.len() {
-            return Err(DoeError::ResponseCountMismatch {
+            return Err(DoeError::DimensionMismatch {
+                parameter: "candidates",
+                index: Some(row),
                 expected: specs.len(),
                 got: candidate.len(),
+                counted: "one response per specification",
             });
         }
         // Reported as a position in the candidates laid end to end, the
@@ -591,9 +597,12 @@ mod tests {
         ));
         assert!(matches!(
             optimize_desirability(&specs, &[vec![1.0, 2.0]]),
-            Err(DoeError::ResponseCountMismatch {
+            Err(DoeError::DimensionMismatch {
+                parameter: "candidates",
+                index: Some(0),
                 expected: 1,
-                got: 2
+                got: 2,
+                ..
             })
         ));
         for bad in [f64::NAN, f64::INFINITY] {
@@ -893,9 +902,12 @@ mod tests {
         );
         assert_eq!(
             overall_desirability(std::slice::from_ref(&spec), &[1.0, 2.0]),
-            Err(DoeError::ResponseCountMismatch {
+            Err(DoeError::DimensionMismatch {
+                parameter: "responses",
+                index: None,
                 expected: 1,
-                got: 2
+                got: 2,
+                counted: "one response per specification",
             })
         );
         let unweighted = spec.with_importance(0.0).unwrap();

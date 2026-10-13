@@ -150,9 +150,12 @@ pub fn doe_anova(
 ) -> Result<DoeAnovaResult, DoeError> {
     let n = design.run_count();
     if responses.len() != n {
-        return Err(DoeError::ResponseCountMismatch {
+        return Err(DoeError::DimensionMismatch {
+            parameter: "responses",
+            index: None,
             expected: n,
             got: responses.len(),
+            counted: "one response per run",
         });
     }
     // Before the centre-point test reads any row: a short row of zeros would
@@ -869,10 +872,12 @@ mod tests {
             };
             assert_eq!(
                 doe_anova(&design, &[1.0, 2.0, 3.0, 4.0], &["A"]).map(|r| r.residual_df),
-                Err(DoeError::DesignShapeMismatch {
-                    run: 3,
+                Err(DoeError::DimensionMismatch {
+                    parameter: "design",
+                    index: Some(3),
                     expected: 2,
-                    got: 1
+                    got: 1,
+                    counted: "one entry per factor",
                 })
             );
         }

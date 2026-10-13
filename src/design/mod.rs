@@ -100,7 +100,7 @@ impl DesignMatrix {
     /// row would panic there, and a long one would be read only in part.
     ///
     /// # Errors
-    /// [`DoeError::DesignShapeMismatch`] naming the first such run.
+    /// [`DoeError::DimensionMismatch`] naming the first such run.
     pub fn check_shape(&self) -> Result<(), DoeError> {
         let expected = self.factor_count();
         match self
@@ -109,10 +109,12 @@ impl DesignMatrix {
             .enumerate()
             .find(|(_, row)| row.len() != expected)
         {
-            Some((run, row)) => Err(DoeError::DesignShapeMismatch {
-                run,
+            Some((run, row)) => Err(DoeError::DimensionMismatch {
+                parameter: "design",
+                index: Some(run),
                 expected,
                 got: row.len(),
+                counted: "one entry per factor",
             }),
             None => Ok(()),
         }

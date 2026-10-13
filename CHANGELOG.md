@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** every refusal of two lengths that do not agree is
+  `dimension_mismatch` — `DoeError::DimensionMismatch { parameter, index,
+  expected, got, .. }` replaces `DesignShapeMismatch`, `ResponseCountMismatch`,
+  `CoefficientCountMismatch` and `PointDimensionMismatch`, and the WebAssembly
+  `code` is `dimension_mismatch` where it was `design_shape_mismatch`,
+  `response_count_mismatch`, `coefficient_count_mismatch` or
+  `point_dimension_mismatch`. `parameter` names the argument (`design`,
+  `responses`, `sn_values`, `candidates`, `coded`, `x`, `coefficients`) and
+  `index` the element that is short or long. The `run` field of the design
+  refusal is `index`; the `factors` field of the coefficient refusal is gone
+  (it is the model's `factor_count`).
+
+### Fixed
+
+- `optimize_desirability` reports a candidate with another number of responses
+  than there are specifications by its position (`parameter: "candidates"`,
+  `index`); it named `responses` with no position.
+
 ## [0.21.0] - 2026-10-13
 
 ### Changed

@@ -93,7 +93,7 @@ pub struct LeastSquaresFit {
 ///
 /// # Errors
 ///
-/// [`DoeError::ResponseCountMismatch`] if `responses.len() != design.run_count()`;
+/// [`DoeError::DimensionMismatch`] if `responses.len() != design.run_count()`;
 /// [`DoeError::UnknownEffect`] if a name is not a factor or a `:`-joined
 /// combination of distinct factors; [`DoeError::NotTwoLevelCoded`] if any
 /// entry is not ±1 -- centre points belong in `doe_anova`, which tests them
@@ -124,9 +124,12 @@ pub fn fit_least_squares(
 ) -> Result<LeastSquaresFit, DoeError> {
     let n = design.run_count();
     if responses.len() != n {
-        return Err(DoeError::ResponseCountMismatch {
+        return Err(DoeError::DimensionMismatch {
+            parameter: "responses",
+            index: None,
             expected: n,
             got: responses.len(),
+            counted: "one response per run",
         });
     }
     design.check_not_empty()?;
@@ -522,9 +525,11 @@ mod tests {
         ));
         assert!(matches!(
             fit_least_squares(&design, &[1.0, 2.0], &["A"]),
-            Err(DoeError::ResponseCountMismatch {
+            Err(DoeError::DimensionMismatch {
+                parameter: "responses",
                 expected: 4,
-                got: 2
+                got: 2,
+                ..
             })
         ));
     }

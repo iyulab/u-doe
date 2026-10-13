@@ -33,24 +33,29 @@ impl RsmModel {
     /// Predict the response at coded factor levels `x`.
     ///
     /// # Errors
-    /// [`DoeError::PointDimensionMismatch`] if `x.len() != factor_count`;
-    /// [`DoeError::CoefficientCountMismatch`] if `coefficients` is not the
+    /// [`DoeError::DimensionMismatch`] if `x.len() != factor_count`;
+    /// [`DoeError::DimensionMismatch`] if `coefficients` is not the
     /// length of a quadratic model in `factor_count` factors. The fields are
     /// public, so a model need not have come from [`fit_rsm`]; either mismatch
     /// used to be absorbed silently, predicting from part of the model.
     pub fn predict(&self, x: &[f64]) -> Result<f64, DoeError> {
         if x.len() != self.factor_count {
-            return Err(DoeError::PointDimensionMismatch {
+            return Err(DoeError::DimensionMismatch {
+                parameter: "x",
+                index: None,
                 expected: self.factor_count,
                 got: x.len(),
+                counted: "one coordinate per factor",
             });
         }
         let row = model_row(x);
         if self.coefficients.len() != row.len() {
-            return Err(DoeError::CoefficientCountMismatch {
-                factors: self.factor_count,
+            return Err(DoeError::DimensionMismatch {
+                parameter: "coefficients",
+                index: None,
                 expected: row.len(),
                 got: self.coefficients.len(),
+                counted: "the terms of a full quadratic model in the model's factors",
             });
         }
         Ok(row
@@ -78,8 +83,8 @@ pub struct AscentStep {
 ///
 /// # Errors
 ///
-/// [`DoeError::ResponseCountMismatch`] if `responses.len() != run_count`;
-/// [`DoeError::EmptyInput`] or [`DoeError::DesignShapeMismatch`] for a design
+/// [`DoeError::DimensionMismatch`] if `responses.len() != run_count`;
+/// [`DoeError::EmptyInput`] or [`DoeError::DimensionMismatch`] for a design
 /// with no runs or factors, or with a run of the wrong length;
 /// [`DoeError::OverSpecifiedModel`] if the full quadratic model has more
 /// coefficients than there are runs; [`DoeError::SingularModel`] if the runs do
@@ -102,9 +107,12 @@ pub fn fit_rsm(design: &DesignMatrix, responses: &[f64]) -> Result<RsmModel, Doe
     let k = design.factor_count();
 
     if responses.len() != n {
-        return Err(DoeError::ResponseCountMismatch {
+        return Err(DoeError::DimensionMismatch {
+            parameter: "responses",
+            index: None,
             expected: n,
             got: responses.len(),
+            counted: "one response per run",
         });
     }
     // An empty design would reach `Matrix::from_rows`, which asserts; a
@@ -186,7 +194,7 @@ pub fn fit_rsm(design: &DesignMatrix, responses: &[f64]) -> Result<RsmModel, Doe
 /// are essentially zero.
 ///
 /// # Errors
-/// [`DoeError::CoefficientCountMismatch`] if `model.coefficients` does not
+/// [`DoeError::DimensionMismatch`] if `model.coefficients` does not
 /// have the length a quadratic model in `model.factor_count` factors has. The
 /// fields are public, so a model need not have come from [`fit_rsm`].
 pub fn steepest_ascent(
@@ -197,10 +205,12 @@ pub fn steepest_ascent(
     let k = model.factor_count;
     let expected = model_row(&vec![0.0; k]).len();
     if model.coefficients.len() != expected {
-        return Err(DoeError::CoefficientCountMismatch {
-            factors: k,
+        return Err(DoeError::DimensionMismatch {
+            parameter: "coefficients",
+            index: None,
             expected,
             got: model.coefficients.len(),
+            counted: "the terms of a full quadratic model in the model's factors",
         });
     }
     DoeError::check_real(
@@ -420,18 +430,23 @@ mod tests {
         let mut model = fit_rsm(&design, &responses).unwrap();
         assert_eq!(
             model.predict(&[0.5]),
-            Err(DoeError::PointDimensionMismatch {
+            Err(DoeError::DimensionMismatch {
+                parameter: "x",
+                index: None,
                 expected: 2,
-                got: 1
+                got: 1,
+                counted: "one coordinate per factor",
             })
         );
         model.coefficients.pop();
         assert_eq!(
             model.predict(&[0.5, 0.5]),
-            Err(DoeError::CoefficientCountMismatch {
-                factors: 2,
+            Err(DoeError::DimensionMismatch {
+                parameter: "coefficients",
+                index: None,
                 expected: 6,
-                got: 5
+                got: 5,
+                counted: "the terms of a full quadratic model in the model's factors",
             })
         );
     }
@@ -470,10 +485,12 @@ mod tests {
         };
         assert_eq!(
             steepest_ascent(&model, 3, 0.5).map(|s| s.len()),
-            Err(DoeError::CoefficientCountMismatch {
-                factors: 2,
+            Err(DoeError::DimensionMismatch {
+                parameter: "coefficients",
+                index: None,
                 expected: 6,
-                got: 2
+                got: 2,
+                counted: "the terms of a full quadratic model in the model's factors",
             })
         );
     }
@@ -496,10 +513,12 @@ mod tests {
         };
         assert_eq!(
             fit_rsm(&ragged, &[1.0, 2.0]).map(|m| m.factor_count),
-            Err(DoeError::DesignShapeMismatch {
-                run: 1,
+            Err(DoeError::DimensionMismatch {
+                parameter: "design",
+                index: Some(1),
                 expected: 2,
-                got: 1
+                got: 1,
+                counted: "one entry per factor",
             })
         );
         // Two factors need 6 coefficients; 4 runs cannot give them.

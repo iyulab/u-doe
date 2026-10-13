@@ -83,9 +83,11 @@ ok(p1.length === 1 && Math.abs(p1[0] - 12.125) < 1e-12, `rsm_predict: ${p1}`)
 const pN = m.rsm_predict(rsmC, 2, Float64Array.from([0.5, -1, 0, 0, 1, 1]))
 ok(pN.length === 3 && Math.abs(pN[1] - 10) < 1e-12, `rsm_predict batched: ${pN}`)
 e = refusal(() => m.rsm_predict(rsmC, 2, Float64Array.from([0.5])))
-ok(e.code === 'point_dimension_mismatch', `ragged coded: ${e.code}`)
+ok(e.code === 'dimension_mismatch' && e.parameter === 'coded' && e.index === 0 && e.expected === 2 && e.got === 1,
+   `ragged coded: ${e.code} ${e.parameter} ${e.index}`)
 e = refusal(() => m.rsm_predict([1, 2, 3], 2, Float64Array.from([0, 0])))
-ok(e.code === 'coefficient_count_mismatch', `wrong coefficient count: ${e.code}`)
+ok(e.code === 'dimension_mismatch' && e.parameter === 'coefficients' && e.expected === 6 && e.got === 3,
+   `wrong coefficient count: ${e.code} ${e.parameter}`)
 
 // A search that cannot report a 0 as an optimum.
 const maxSpec = (lower, target) => [{ goal: 'Maximize', lower, target, upper: target, s1: 1, s2: 1 }]

@@ -163,9 +163,12 @@ pub(crate) fn contrast_effects(
     let k = design.factor_count();
 
     if responses.len() != n {
-        return Err(DoeError::ResponseCountMismatch {
+        return Err(DoeError::DimensionMismatch {
+            parameter: "responses",
+            index: None,
             expected: n,
             got: responses.len(),
+            counted: "one response per run",
         });
     }
 

@@ -157,7 +157,7 @@ pub struct SnFactorEffect {
 /// One [`SnFactorEffect`] per factor, in column order.
 ///
 /// # Errors
-/// [`DoeError::ResponseCountMismatch`] if `sn_values.len() != design.run_count()`.
+/// [`DoeError::DimensionMismatch`] if `sn_values.len() != design.run_count()`.
 ///
 /// [`taguchi_array`]: crate::design::taguchi::taguchi_array
 ///
@@ -179,9 +179,12 @@ pub fn sn_factor_effects(
 ) -> Result<Vec<SnFactorEffect>, DoeError> {
     let n_runs = design.run_count();
     if sn_values.len() != n_runs {
-        return Err(DoeError::ResponseCountMismatch {
+        return Err(DoeError::DimensionMismatch {
+            parameter: "sn_values",
+            index: None,
             expected: n_runs,
             got: sn_values.len(),
+            counted: "one S/N ratio per run",
         });
     }
 
