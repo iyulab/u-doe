@@ -1,3 +1,5 @@
+use std::ops::{Bound, RangeBounds};
+
 /// Errors produced by u-doe operations.
 ///
 /// Every variant carries the values that explain it as fields rather than as
@@ -13,19 +15,37 @@
     serde(tag = "code", rename_all = "snake_case")
 )]
 pub enum DoeError {
-    /// Invalid number of factors for this design type.
-    InvalidFactorCount { min: usize, max: usize, got: usize },
-    /// A numeric parameter other than the factor count is outside the range the
-    /// function accepts. `max` is `None` when there is no upper bound.
+    /// A numeric argument outside the range the function accepts.
     ///
-    /// `got` is signed: the functions take counts as `usize`, but a binding
-    /// reads a count as a number, and a negative one is refused with this
-    /// variant -- the same refusal, bounds included, as a count too small.
+    /// A closed end of that range is `min` / `max`; an open end -- the end
+    /// value itself refused -- is `exclusive_min` / `exclusive_max`, with `min`
+    /// / `max` `None` on that side; a side with no limit is `None` throughout.
+    /// With the `wasm` feature `min` and `max` are always present (`null` when
+    /// `None`) and the `exclusive_*` fields only when that end is open.
+    ///
+    /// Counts are reported here too, as the same numbers: the functions take
+    /// them as `usize`, but a binding reads a count as a number, and a negative
+    /// one is refused with this variant -- the same refusal, bounds included,
+    /// as a count too small. `index` is the position of the specification in
+    /// its list, for a setting of one desirability specification.
     ParameterOutOfRange {
         parameter: &'static str,
-        min: usize,
-        max: Option<usize>,
-        got: i64,
+        #[cfg_attr(feature = "wasm", serde(skip_serializing_if = "Option::is_none"))]
+        index: Option<usize>,
+        min: Option<f64>,
+        max: Option<f64>,
+        #[cfg_attr(feature = "wasm", serde(skip_serializing_if = "Option::is_none"))]
+        exclusive_min: Option<f64>,
+        #[cfg_attr(feature = "wasm", serde(skip_serializing_if = "Option::is_none"))]
+        exclusive_max: Option<f64>,
+        got: f64,
+    },
+    /// A real-valued argument that is NaN or ±Infinity, where only a finite
+    /// number has a meaning. `index` is the position of the element in its
+    /// list, when there is one.
+    ValueNotFinite {
+        parameter: &'static str,
+        index: Option<usize>,
     },
     /// The 2^(k-p) fraction is not in the standard generator table. `supported`
     /// lists every `(k, p)` that is.
@@ -119,16 +139,6 @@ pub enum DoeError {
         target: f64,
         upper: f64,
     },
-    /// A real-valued parameter outside the set of values it has a meaning for:
-    /// a desirability exponent or importance, an effect size, a standard
-    /// deviation, a significance level. `domain` says what the value must be.
-    /// `index` is the position of the element in its list, when there is one.
-    ValueOutOfDomain {
-        index: Option<usize>,
-        parameter: &'static str,
-        value: f64,
-        domain: &'static str,
-    },
     /// Every desirability specification has importance 0, so there is nothing
     /// to combine.
     NoWeightedResponse,
@@ -138,33 +148,74 @@ impl DoeError {
     /// The same error, placed at position `index` of the input list it came
     /// from. Only errors about one element of a list carry an index; others
     /// are returned unchanged.
-    pub fn at_index(self, index: usize) -> Self {
-        match self {
-            DoeError::InvalidDesirabilityLimits {
-                goal,
-                lower,
-                target,
-                upper,
-                ..
-            } => DoeError::InvalidDesirabilityLimits {
-                index: Some(index),
-                goal,
-                lower,
-                target,
-                upper,
-            },
-            DoeError::ValueOutOfDomain {
+    pub fn at_index(mut self, at: usize) -> Self {
+        match &mut self {
+            DoeError::InvalidDesirabilityLimits { index, .. }
+            | DoeError::ParameterOutOfRange { index, .. }
+            | DoeError::ValueNotFinite { index, .. } => *index = Some(at),
+            _ => {}
+        }
+        self
+    }
+
+    /// `got` outside `accepted`, the range `parameter` takes, each end open or
+    /// closed as it is: `1.0..`, `(Excluded(0.0), Excluded(1.0))`.
+    pub(crate) fn out_of_range(
+        parameter: &'static str,
+        accepted: impl RangeBounds<f64>,
+        got: f64,
+    ) -> Self {
+        let (min, exclusive_min) = split(accepted.start_bound());
+        let (max, exclusive_max) = split(accepted.end_bound());
+        DoeError::ParameterOutOfRange {
+            parameter,
+            index: None,
+            min,
+            max,
+            exclusive_min,
+            exclusive_max,
+            got,
+        }
+    }
+
+    /// A count `got` outside `accepted`: `2..=7`, `1..`, `0..k`. A count's
+    /// bounds are closed -- `0..k` is reported as `max: k - 1` -- since no
+    /// whole number lies between them and the open end.
+    pub(crate) fn count_out_of_range(
+        parameter: &'static str,
+        accepted: impl RangeBounds<usize>,
+        got: usize,
+    ) -> Self {
+        let low = match accepted.start_bound() {
+            Bound::Included(&v) => Bound::Included(v as f64),
+            Bound::Excluded(&v) => Bound::Included(v as f64 + 1.0),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let high = match accepted.end_bound() {
+            Bound::Included(&v) => Bound::Included(v as f64),
+            Bound::Excluded(&v) => Bound::Included(v as f64 - 1.0),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        Self::out_of_range(parameter, (low, high), got as f64)
+    }
+
+    /// `value` if it is finite and inside `accepted`; otherwise
+    /// [`DoeError::ValueNotFinite`] or [`DoeError::ParameterOutOfRange`] with
+    /// those bounds, so the check and the refusal cannot disagree.
+    pub(crate) fn check_real(
+        parameter: &'static str,
+        value: f64,
+        accepted: impl RangeBounds<f64>,
+    ) -> Result<f64, Self> {
+        if !value.is_finite() {
+            Err(DoeError::ValueNotFinite {
                 parameter,
-                value,
-                domain,
-                ..
-            } => DoeError::ValueOutOfDomain {
-                index: Some(index),
-                parameter,
-                value,
-                domain,
-            },
-            other => other,
+                index: None,
+            })
+        } else if accepted.contains(&value) {
+            Ok(value)
+        } else {
+            Err(Self::out_of_range(parameter, accepted, value))
         }
     }
 
@@ -176,8 +227,8 @@ impl DoeError {
     /// ```
     pub fn code(&self) -> &'static str {
         match self {
-            DoeError::InvalidFactorCount { .. } => "invalid_factor_count",
             DoeError::ParameterOutOfRange { .. } => "parameter_out_of_range",
+            DoeError::ValueNotFinite { .. } => "value_not_finite",
             DoeError::UnsupportedFraction { .. } => "unsupported_fraction",
             DoeError::UnknownArray { .. } => "unknown_array",
             DoeError::EmptyDesign { .. } => "empty_design",
@@ -199,7 +250,6 @@ impl DoeError {
             DoeError::TooFewReplicates { .. } => "too_few_replicates",
             DoeError::NonPositiveResponse { .. } => "non_positive_response",
             DoeError::InvalidDesirabilityLimits { .. } => "invalid_desirability_limits",
-            DoeError::ValueOutOfDomain { .. } => "value_out_of_domain",
             DoeError::NoWeightedResponse => "no_weighted_response",
         }
     }
@@ -208,21 +258,25 @@ impl DoeError {
 impl std::fmt::Display for DoeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DoeError::InvalidFactorCount { min, max, got } => {
-                write!(f, "invalid factor count: expected {min}..={max}, got {got}")
+            DoeError::ParameterOutOfRange {
+                parameter,
+                index,
+                min,
+                max,
+                exclusive_min,
+                exclusive_max,
+                got,
+            } => {
+                if let Some(i) = index {
+                    write!(f, "specs[{i}]: ")?;
+                }
+                let range = describe(*min, *max, *exclusive_min, *exclusive_max);
+                write!(f, "{parameter} must be {range}, got {got}")
             }
-            DoeError::ParameterOutOfRange {
-                parameter,
-                min,
-                max: Some(max),
-                got,
-            } => write!(f, "{parameter} must be in {min}..={max}, got {got}"),
-            DoeError::ParameterOutOfRange {
-                parameter,
-                min,
-                max: None,
-                got,
-            } => write!(f, "{parameter} must be at least {min}, got {got}"),
+            DoeError::ValueNotFinite { parameter, index } => match index {
+                Some(i) => write!(f, "{parameter} at position {i} must be a finite number"),
+                None => write!(f, "{parameter} must be a finite number"),
+            },
             DoeError::UnsupportedFraction { k, p, supported } => {
                 write!(
                     f,
@@ -363,17 +417,6 @@ impl std::fmt::Display for DoeError {
                      {target}, upper {upper}: the ramp has no width or runs backwards"
                 )
             }
-            DoeError::ValueOutOfDomain {
-                index,
-                parameter,
-                value,
-                domain,
-            } => {
-                if let Some(i) = index {
-                    write!(f, "specs[{i}]: ")?;
-                }
-                write!(f, "{parameter} must be {domain}, got {value}")
-            }
             DoeError::NoWeightedResponse => write!(
                 f,
                 "every response has importance 0, so there is nothing to combine"
@@ -384,28 +427,50 @@ impl std::fmt::Display for DoeError {
 
 impl std::error::Error for DoeError {}
 
+/// One end of an accepted range as the variant's fields carry it: the closed
+/// value, or the open one.
+fn split(end: Bound<&f64>) -> (Option<f64>, Option<f64>) {
+    match end {
+        Bound::Included(&v) => (Some(v), None),
+        Bound::Excluded(&v) => (None, Some(v)),
+        Bound::Unbounded => (None, None),
+    }
+}
+
+/// The accepted range in words, each end as it is: `at least 1`, `greater
+/// than 0`, `in [2, 7]`, `in (0, 1)`.
+fn describe(
+    min: Option<f64>,
+    max: Option<f64>,
+    exclusive_min: Option<f64>,
+    exclusive_max: Option<f64>,
+) -> String {
+    let low = min.map(|v| (v, '[')).or(exclusive_min.map(|v| (v, '(')));
+    let high = max.map(|v| (v, ']')).or(exclusive_max.map(|v| (v, ')')));
+    match (low, high) {
+        (Some((a, '[')), None) => format!("at least {a}"),
+        (Some((a, _)), None) => format!("greater than {a}"),
+        (None, Some((b, ']'))) => format!("at most {b}"),
+        (None, Some((b, _))) => format!("less than {b}"),
+        (Some((a, open)), Some((b, close))) => format!("in {open}{a}, {b}{close}"),
+        (None, None) => "a finite number".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn every_variant() -> Vec<DoeError> {
         vec![
-            DoeError::InvalidFactorCount {
-                min: 2,
-                max: 7,
-                got: 1,
-            },
-            DoeError::ParameterOutOfRange {
-                parameter: "n_center",
-                min: 1,
-                max: None,
-                got: 0,
-            },
-            DoeError::ParameterOutOfRange {
-                parameter: "m",
-                min: 1,
-                max: Some(4),
-                got: 0,
+            DoeError::count_out_of_range("k", 2..=7, 1),
+            DoeError::count_out_of_range("n_center", 1.., 0),
+            DoeError::out_of_range("alpha", (Bound::Excluded(0.0), Bound::Excluded(1.0)), 1.0),
+            DoeError::out_of_range("importance", 0.0.., -1.0).at_index(2),
+            DoeError::out_of_range("step_size", (Bound::Excluded(0.0), Bound::Unbounded), 0.0),
+            DoeError::ValueNotFinite {
+                parameter: "sigma",
+                index: None,
             },
             DoeError::UnsupportedFraction {
                 k: 4,
@@ -489,12 +554,6 @@ mod tests {
                 target: 5.0,
                 upper: 0.0,
             },
-            DoeError::ValueOutOfDomain {
-                index: None,
-                parameter: "importance",
-                value: -1.0,
-                domain: "finite and not negative",
-            },
             DoeError::NoWeightedResponse,
         ]
     }
@@ -519,6 +578,123 @@ mod tests {
         assert_eq!(
             e.to_string(),
             "unsupported design: 2^(4-2) not in standard table; supported (k,p): (4,1),(5,2)"
+        );
+    }
+
+    /// A range refusal states the range it checked, each end as it is.
+    #[test]
+    fn range_messages_state_the_bounds() {
+        let msg = |e: DoeError| e.to_string();
+        assert_eq!(
+            msg(DoeError::count_out_of_range("k", 2..=7, 0)),
+            "k must be in [2, 7], got 0"
+        );
+        assert_eq!(
+            msg(DoeError::count_out_of_range("n_center", 1.., 0)),
+            "n_center must be at least 1, got 0"
+        );
+        assert_eq!(
+            msg(DoeError::out_of_range(
+                "alpha",
+                (Bound::Excluded(0.0), Bound::Excluded(1.0)),
+                1.5
+            )),
+            "alpha must be in (0, 1), got 1.5"
+        );
+        assert_eq!(
+            msg(DoeError::out_of_range(
+                "sigma",
+                (Bound::Excluded(0.0), Bound::Unbounded),
+                -2.0
+            )),
+            "sigma must be greater than 0, got -2"
+        );
+        assert_eq!(
+            msg(DoeError::out_of_range("importance", 0.0.., -1.0).at_index(1)),
+            "specs[1]: importance must be at least 0, got -1"
+        );
+    }
+
+    /// The check and the refusal come from one range: what is refused is what
+    /// the bounds exclude, and a non-finite value is not a value out of range.
+    #[test]
+    fn check_real_refuses_with_the_bounds_it_checked() {
+        let open = (Bound::Excluded(0.0), Bound::Excluded(1.0));
+        assert_eq!(DoeError::check_real("alpha", 0.05, open), Ok(0.05));
+        for bad in [0.0, 1.0, -3.0] {
+            assert_eq!(
+                DoeError::check_real("alpha", bad, open),
+                Err(DoeError::ParameterOutOfRange {
+                    parameter: "alpha",
+                    index: None,
+                    min: None,
+                    max: None,
+                    exclusive_min: Some(0.0),
+                    exclusive_max: Some(1.0),
+                    got: bad,
+                })
+            );
+        }
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                DoeError::check_real("alpha", bad, open),
+                Err(DoeError::ValueNotFinite {
+                    parameter: "alpha",
+                    index: None,
+                })
+            );
+        }
+    }
+
+    /// `min` / `max` are always there, `null` on an open or unbounded side;
+    /// `exclusive_*` and `index` only when they say something.
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn range_refusal_fields() {
+        let v = |e: DoeError| serde_json::to_value(&e).expect("DoeError serializes");
+        assert_eq!(
+            v(DoeError::count_out_of_range("k", 2..=7, 0)),
+            serde_json::json!({
+                "code": "parameter_out_of_range",
+                "parameter": "k",
+                "min": 2.0,
+                "max": 7.0,
+                "got": 0.0,
+            })
+        );
+        assert_eq!(
+            v(DoeError::out_of_range(
+                "alpha",
+                (Bound::Excluded(0.0), Bound::Excluded(1.0)),
+                1.0
+            )),
+            serde_json::json!({
+                "code": "parameter_out_of_range",
+                "parameter": "alpha",
+                "min": null,
+                "max": null,
+                "exclusive_min": 0.0,
+                "exclusive_max": 1.0,
+                "got": 1.0,
+            })
+        );
+        assert_eq!(
+            v(DoeError::out_of_range("importance", 0.0.., -1.0).at_index(1)),
+            serde_json::json!({
+                "code": "parameter_out_of_range",
+                "parameter": "importance",
+                "index": 1,
+                "min": 0.0,
+                "max": null,
+                "got": -1.0,
+            })
+        );
+        assert_eq!(
+            v(DoeError::ValueNotFinite {
+                parameter: "sigma",
+                index: None
+            }),
+            serde_json::json!({ "code": "value_not_finite", "parameter": "sigma", "index": null })
         );
     }
 

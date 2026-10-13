@@ -12,6 +12,8 @@
 //! 0.648 to detect an effect of 2 with σ = 1.5 at α = 0.05; the normal
 //! approximation says 0.760.
 
+use std::ops::Bound::{self, Excluded, Unbounded};
+
 use u_numflow::special::{noncentral_t_cdf, t_distribution_quantile};
 
 use crate::error::DoeError;
@@ -46,9 +48,10 @@ use crate::error::DoeError;
 /// # Errors
 /// [`DoeError::ParameterOutOfRange`] if `k` is 0, `p >= k`, `n_replicates` is
 /// 0, or `model_terms` is 0 or more than the `2^(k-p) − 1` effects the
-/// fraction can estimate; [`DoeError::ValueOutOfDomain`] unless `effect_size`
-/// and `sigma` are finite and positive and `alpha` lies strictly between 0 and
-/// 1; [`DoeError::NoErrorDegreesOfFreedom`] if the model leaves no error
+/// fraction can estimate, or unless `effect_size` and `sigma` are positive
+/// (`exclusive_min` 0) and `alpha` lies strictly between 0 and 1
+/// (`exclusive_min` 0, `exclusive_max` 1); [`DoeError::ValueNotFinite`] if one
+/// of those three is NaN or infinite; [`DoeError::NoErrorDegreesOfFreedom`] if the model leaves no error
 /// degrees of freedom (an unreplicated full model), where no effect can be
 /// tested and so there is no power to report.
 ///
@@ -75,12 +78,7 @@ pub fn two_level_factorial_power(
 ) -> Result<f64, DoeError> {
     check_design(k, p)?;
     if n_replicates == 0 {
-        return Err(DoeError::ParameterOutOfRange {
-            parameter: "n_replicates",
-            min: 1,
-            max: None,
-            got: 0,
-        });
+        return Err(DoeError::count_out_of_range("n_replicates", 1.., 0));
     }
     check_effect(effect_size, sigma, alpha)?;
     let design = Design::new(k, p, model_terms)?;
@@ -115,9 +113,8 @@ pub fn two_level_factorial_power(
 ///
 /// # Errors
 /// As [`two_level_factorial_power`] (except `NoErrorDegreesOfFreedom`), and
-/// [`DoeError::ParameterOutOfRange`] if `max_replicates` is 0 or
-/// [`DoeError::ValueOutOfDomain`] unless `target_power` lies strictly between
-/// 0 and 1.
+/// [`DoeError::ParameterOutOfRange`] if `max_replicates` is 0 or unless
+/// `target_power` lies strictly between 0 and 1.
 ///
 /// # Examples
 ///
@@ -140,14 +137,7 @@ pub fn required_replicates(
     check_design(k, p)?;
     check_max_replicates(max_replicates)?;
     check_effect(effect_size, sigma, alpha)?;
-    if !(target_power > 0.0 && target_power < 1.0) {
-        return Err(DoeError::ValueOutOfDomain {
-            index: None,
-            parameter: "target_power",
-            value: target_power,
-            domain: OPEN_UNIT_INTERVAL,
-        });
-    }
+    DoeError::check_real("target_power", target_power, OPEN_UNIT_INTERVAL)?;
     let design = Design::new(k, p, model_terms)?;
     Ok((1..=max_replicates).find(|&n| {
         design.error_df(n).is_some_and(|df| {
@@ -191,8 +181,11 @@ pub fn power_curve(
         .collect())
 }
 
-const POSITIVE: &str = "finite and greater than 0";
-const OPEN_UNIT_INTERVAL: &str = "strictly between 0 and 1";
+/// What an effect size or a standard deviation takes: greater than 0.
+const POSITIVE: (Bound<f64>, Bound<f64>) = (Excluded(0.0), Unbounded);
+/// What a probability -- `alpha`, a target power -- takes: strictly between 0
+/// and 1.
+const OPEN_UNIT_INTERVAL: (Bound<f64>, Bound<f64>) = (Excluded(0.0), Excluded(1.0));
 
 /// A checked 2^(k-p) design and the number of model terms fitted to it.
 struct Design {
@@ -215,12 +208,11 @@ impl Design {
             None => estimable,
             Some(terms) if (1..=estimable).contains(&terms) => terms,
             Some(terms) => {
-                return Err(DoeError::ParameterOutOfRange {
-                    parameter: "model_terms",
-                    min: 1,
-                    max: Some(estimable),
-                    got: terms as i64,
-                })
+                return Err(DoeError::count_out_of_range(
+                    "model_terms",
+                    1..=estimable,
+                    terms,
+                ))
             }
         };
         Ok(Self { k, p, terms })
@@ -245,55 +237,25 @@ impl Design {
 
 fn check_design(k: usize, p: usize) -> Result<(), DoeError> {
     if k == 0 {
-        return Err(DoeError::ParameterOutOfRange {
-            parameter: "k",
-            min: 1,
-            max: None,
-            got: 0,
-        });
+        return Err(DoeError::count_out_of_range("k", 1.., 0));
     }
     if p >= k {
-        return Err(DoeError::ParameterOutOfRange {
-            parameter: "p",
-            min: 0,
-            max: Some(k - 1),
-            got: p as i64,
-        });
+        return Err(DoeError::count_out_of_range("p", 0..k, p));
     }
     Ok(())
 }
 
 fn check_max_replicates(max_replicates: usize) -> Result<(), DoeError> {
     if max_replicates == 0 {
-        return Err(DoeError::ParameterOutOfRange {
-            parameter: "max_replicates",
-            min: 1,
-            max: None,
-            got: 0,
-        });
+        return Err(DoeError::count_out_of_range("max_replicates", 1.., 0));
     }
     Ok(())
 }
 
 fn check_effect(effect_size: f64, sigma: f64, alpha: f64) -> Result<(), DoeError> {
-    for (parameter, value) in [("effect_size", effect_size), ("sigma", sigma)] {
-        if !(value.is_finite() && value > 0.0) {
-            return Err(DoeError::ValueOutOfDomain {
-                index: None,
-                parameter,
-                value,
-                domain: POSITIVE,
-            });
-        }
-    }
-    if !(alpha > 0.0 && alpha < 1.0) {
-        return Err(DoeError::ValueOutOfDomain {
-            index: None,
-            parameter: "alpha",
-            value: alpha,
-            domain: OPEN_UNIT_INTERVAL,
-        });
-    }
+    DoeError::check_real("effect_size", effect_size, POSITIVE)?;
+    DoeError::check_real("sigma", sigma, POSITIVE)?;
+    DoeError::check_real("alpha", alpha, OPEN_UNIT_INTERVAL)?;
     Ok(())
 }
 
@@ -432,9 +394,12 @@ mod tests {
                 two_level_factorial_power(3, 0, 2, 2.0, 1.5, 0.05, Some(terms)),
                 Err(DoeError::ParameterOutOfRange {
                     parameter: "model_terms",
-                    min: 1,
-                    max: Some(7),
-                    got: terms as i64,
+                    index: None,
+                    min: Some(1.0),
+                    max: Some(7.0),
+                    exclusive_min: None,
+                    exclusive_max: None,
+                    got: terms as f64,
                 })
             );
         }
@@ -443,7 +408,7 @@ mod tests {
             two_level_factorial_power(5, 2, 2, 1.0, 1.0, 0.05, Some(8)),
             Err(DoeError::ParameterOutOfRange {
                 parameter: "model_terms",
-                max: Some(7),
+                max: Some(7.0),
                 ..
             })
         ));
@@ -541,11 +506,16 @@ mod tests {
     /// valid design with a tiny effect returns.
     #[test]
     fn invalid_inputs_are_refused() {
-        let range = |parameter: &'static str, min, max, got| DoeError::ParameterOutOfRange {
-            parameter,
-            min,
-            max,
-            got,
+        let range = |parameter: &'static str, min: usize, max: Option<usize>, got: usize| {
+            DoeError::ParameterOutOfRange {
+                parameter,
+                index: None,
+                min: Some(min as f64),
+                max: max.map(|m| m as f64),
+                exclusive_min: None,
+                exclusive_max: None,
+                got: got as f64,
+            }
         };
         let pw = |k, p, n, e, s, a| two_level_factorial_power(k, p, n, e, s, a, None);
         assert_eq!(pw(0, 0, 1, 1.0, 1.0, 0.05), Err(range("k", 1, None, 0)));
@@ -554,23 +524,45 @@ mod tests {
             pw(3, 0, 0, 1.0, 1.0, 0.05),
             Err(range("n_replicates", 1, None, 0))
         );
-        let domain = |f: Result<f64, DoeError>| match f {
-            Err(DoeError::ValueOutOfDomain { parameter, .. }) => parameter,
-            other => panic!("{other:?}"),
-        };
-        assert_eq!(domain(pw(3, 0, 2, 0.0, 1.0, 0.05)), "effect_size");
-        assert_eq!(domain(pw(3, 0, 2, 1.0, -1.0, 0.05)), "sigma");
-        assert_eq!(domain(pw(3, 0, 2, f64::NAN, 1.0, 0.05)), "effect_size");
-        for alpha in [0.0, 1.0, 2.0, f64::NAN] {
-            assert_eq!(domain(pw(3, 0, 2, 1.0, 1.0, alpha)), "alpha");
-        }
-        assert!(matches!(
-            required_replicates(3, 0, 1.0, 1.0, 0.05, 1.0, 10, None),
-            Err(DoeError::ValueOutOfDomain {
-                parameter: "target_power",
-                ..
+        let open =
+            |parameter: &'static str, high: Option<f64>, got: f64| DoeError::ParameterOutOfRange {
+                parameter,
+                index: None,
+                min: None,
+                max: None,
+                exclusive_min: Some(0.0),
+                exclusive_max: high,
+                got,
+            };
+        assert_eq!(
+            pw(3, 0, 2, 0.0, 1.0, 0.05),
+            Err(open("effect_size", None, 0.0))
+        );
+        assert_eq!(pw(3, 0, 2, 1.0, -1.0, 0.05), Err(open("sigma", None, -1.0)));
+        assert_eq!(
+            pw(3, 0, 2, f64::NAN, 1.0, 0.05),
+            Err(DoeError::ValueNotFinite {
+                parameter: "effect_size",
+                index: None
             })
-        ));
+        );
+        for alpha in [0.0, 1.0, 2.0] {
+            assert_eq!(
+                pw(3, 0, 2, 1.0, 1.0, alpha),
+                Err(open("alpha", Some(1.0), alpha))
+            );
+        }
+        assert_eq!(
+            pw(3, 0, 2, 1.0, 1.0, f64::NAN),
+            Err(DoeError::ValueNotFinite {
+                parameter: "alpha",
+                index: None
+            })
+        );
+        assert_eq!(
+            required_replicates(3, 0, 1.0, 1.0, 0.05, 1.0, 10, None),
+            Err(open("target_power", Some(1.0), 1.0))
+        );
         assert_eq!(
             power_curve(3, 0, 1.0, 1.0, 0.05, 0, None),
             Err(range("max_replicates", 1, None, 0))

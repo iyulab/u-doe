@@ -26,14 +26,10 @@ use crate::error::DoeError;
 /// guaranteed but full column orthogonality requires a larger conference order.
 ///
 /// # Errors
-/// Returns [`DoeError::InvalidFactorCount`] when `k < 2` or `k > 12`.
+/// Returns [`DoeError::ParameterOutOfRange`] when `k < 2` or `k > 12`.
 pub fn definitive_screening(k: usize) -> Result<DesignMatrix, DoeError> {
     if !(2..=12).contains(&k) {
-        return Err(DoeError::InvalidFactorCount {
-            min: 2,
-            max: 12,
-            got: k,
-        });
+        return Err(DoeError::count_out_of_range("k", 2..=12, k));
     }
 
     let conf = conference_matrix(k);

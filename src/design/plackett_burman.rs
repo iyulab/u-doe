@@ -49,23 +49,15 @@ const PB_BASES: &[(usize, &[i8])] = &[
 /// assert_eq!(d.factor_count(), 7);
 /// ```
 pub fn plackett_burman(k: usize) -> Result<DesignMatrix, DoeError> {
-    if k == 0 || k > 19 {
-        return Err(DoeError::InvalidFactorCount {
-            min: 1,
-            max: 19,
-            got: k,
-        });
+    if !(1..=19).contains(&k) {
+        return Err(DoeError::count_out_of_range("k", 1..=19, k));
     }
 
     let (n, base) = PB_BASES
         .iter()
         .find(|(n, _)| *n > k)
         .map(|(n, b)| (*n, *b))
-        .ok_or(DoeError::InvalidFactorCount {
-            min: 1,
-            max: 19,
-            got: k,
-        })?;
+        .ok_or_else(|| DoeError::count_out_of_range("k", 1..=19, k))?;
 
     let m = n - 1; // number of base columns
 

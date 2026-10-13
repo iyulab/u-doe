@@ -12,6 +12,8 @@
 //! Reference: Montgomery, D.C. (2019). *Introduction to Statistical Quality
 //! Control*, 8th ed., Sections 11.2–11.3. Wiley.
 
+use std::ops::Bound;
+
 use u_numflow::matrix::Matrix;
 
 use crate::{design::DesignMatrix, error::DoeError};
@@ -206,14 +208,11 @@ pub fn steepest_ascent(
             got: model.coefficients.len(),
         });
     }
-    if !(step_size.is_finite() && step_size > 0.0) {
-        return Err(DoeError::ValueOutOfDomain {
-            index: None,
-            parameter: "step_size",
-            value: step_size,
-            domain: "finite and > 0",
-        });
-    }
+    DoeError::check_real(
+        "step_size",
+        step_size,
+        (Bound::Excluded(0.0), Bound::Unbounded),
+    )?;
     // Linear coefficients: indices 1..=k in coefficients vector
     let linear = &model.coefficients[1..=k];
 
@@ -546,14 +545,28 @@ mod tests {
             r_squared: 1.0,
             factor_count: 1,
         };
-        for bad in [0.0, -0.5, f64::NAN] {
-            assert!(matches!(
-                steepest_ascent(&model, 3, bad),
-                Err(DoeError::ValueOutOfDomain {
+        for bad in [0.0, -0.5] {
+            assert_eq!(
+                steepest_ascent(&model, 3, bad).map(|_| ()),
+                Err(DoeError::ParameterOutOfRange {
                     parameter: "step_size",
-                    ..
+                    index: None,
+                    min: None,
+                    max: None,
+                    exclusive_min: Some(0.0),
+                    exclusive_max: None,
+                    got: bad,
                 })
-            ));
+            );
+        }
+        for bad in [f64::NAN, f64::INFINITY] {
+            assert_eq!(
+                steepest_ascent(&model, 3, bad).map(|_| ()),
+                Err(DoeError::ValueNotFinite {
+                    parameter: "step_size",
+                    index: None,
+                })
+            );
         }
     }
 }

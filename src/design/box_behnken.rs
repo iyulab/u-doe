@@ -36,19 +36,10 @@ use crate::error::DoeError;
 /// ```
 pub fn box_behnken(k: usize, n_center: usize) -> Result<DesignMatrix, DoeError> {
     if !matches!(k, 3..=5) {
-        return Err(DoeError::InvalidFactorCount {
-            min: 3,
-            max: 5,
-            got: k,
-        });
+        return Err(DoeError::count_out_of_range("k", 3..=5, k));
     }
     if n_center == 0 {
-        return Err(DoeError::ParameterOutOfRange {
-            parameter: "n_center",
-            min: 1,
-            max: None,
-            got: 0,
-        });
+        return Err(DoeError::count_out_of_range("n_center", 1.., 0));
     }
 
     let pairs = bib_pairs(k);

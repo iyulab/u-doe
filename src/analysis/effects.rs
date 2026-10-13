@@ -192,12 +192,7 @@ pub(crate) fn contrast_effects(
 
     // Asking for no terms at all used to return the main effects anyway.
     if max_order == 0 {
-        return Err(DoeError::ParameterOutOfRange {
-            parameter: "max_order",
-            min: 1,
-            max: None,
-            got: 0,
-        });
+        return Err(DoeError::count_out_of_range("max_order", 1.., 0));
     }
 
     // Collect terms to estimate

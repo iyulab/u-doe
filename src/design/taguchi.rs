@@ -228,6 +228,34 @@ fn to_coded(level: u8, n_levels: usize) -> f64 {
     }
 }
 
+/// The array named `name`, or [`DoeError::UnknownArray`].
+fn array_spec(name: &str) -> Result<&'static ArraySpec, DoeError> {
+    ARRAYS
+        .iter()
+        .find(|a| a.name == name)
+        .ok_or_else(|| DoeError::UnknownArray {
+            array: name.to_string(),
+            supported: ARRAY_NAMES,
+        })
+}
+
+/// The most factors the array named `name` holds: the upper bound
+/// [`taguchi_array`] checks `k` against.
+///
+/// # Errors
+///
+/// Returns [`DoeError::UnknownArray`] if `name` is not recognised.
+///
+/// # Examples
+///
+/// ```
+/// use u_doe::design::taguchi::max_factors;
+/// assert_eq!(max_factors("L8").unwrap(), 7);
+/// ```
+pub fn max_factors(name: &str) -> Result<usize, DoeError> {
+    array_spec(name).map(|spec| spec.max_factors)
+}
+
 /// Generate a Taguchi orthogonal array design.
 ///
 /// # Arguments
@@ -237,7 +265,7 @@ fn to_coded(level: u8, n_levels: usize) -> f64 {
 /// # Errors
 ///
 /// Returns [`DoeError::UnknownArray`] if `name` is not recognised.
-/// Returns [`DoeError::InvalidFactorCount`] if `k == 0` or `k > max_factors`.
+/// Returns [`DoeError::ParameterOutOfRange`] if `k == 0` or `k > max_factors`.
 ///
 /// # Examples
 ///
@@ -248,20 +276,10 @@ fn to_coded(level: u8, n_levels: usize) -> f64 {
 /// assert_eq!(d.factor_count(), 7);
 /// ```
 pub fn taguchi_array(name: &str, k: usize) -> Result<DesignMatrix, DoeError> {
-    let spec = ARRAYS
-        .iter()
-        .find(|a| a.name == name)
-        .ok_or_else(|| DoeError::UnknownArray {
-            array: name.to_string(),
-            supported: ARRAY_NAMES,
-        })?;
+    let spec = array_spec(name)?;
 
     if k == 0 || k > spec.max_factors {
-        return Err(DoeError::InvalidFactorCount {
-            min: 1,
-            max: spec.max_factors,
-            got: k,
-        });
+        return Err(DoeError::count_out_of_range("k", 1..=spec.max_factors, k));
     }
 
     // Build run-major data matrix from column-major storage.

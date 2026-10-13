@@ -18,8 +18,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   count above 2³² − 1 is `parameter_out_of_range` with that `max`; both were
   `malformed_input`. A NaN or ±Infinity count is `value_not_finite`, previously
   `malformed_input`. A fraction stays `malformed_input` ("must be a whole number").
-- **Breaking:** `DoeError::ParameterOutOfRange::got` is `i64` (was `usize`), so the
-  refusal of a negative count can state the value given.
+- **Breaking:** a factor count outside a design generator's range is
+  `parameter_out_of_range` with `parameter` (`"k"`, or `"q"` for the mixture
+  designs), `min`, `max` and `got` — the code every other count out of range has.
+  It was `invalid_factor_count` with no `parameter`, so `k: 0` and `k: -1` were
+  refused under two codes with two different minimums; both now report the
+  generator's own bounds (`full_factorial`: `min: 2`, `max: 7`). The
+  WebAssembly binding states the same bounds for a negative count.
+  `DoeError::InvalidFactorCount` is removed.
+- **Breaking:** a real-valued setting outside its range is
+  `parameter_out_of_range` with its bounds and `got`: `s1`/`s2`, `effect_size`,
+  `sigma` and `step_size` report `exclusive_min: 0`, `importance` `min: 0`,
+  `alpha` and `target_power` `exclusive_min: 0` and `exclusive_max: 1`; a spec's
+  setting carries the spec's position as `index`. A NaN or ±Infinity there is
+  `value_not_finite` (`parameter`, `index`). Both were `value_out_of_domain`
+  with the range only as text (`domain`); `DoeError::ValueOutOfDomain` is
+  removed, and a non-finite response passed to `optimize_desirability` is
+  `DoeError::ValueNotFinite` with `parameter: "candidates"` and its position in
+  the candidates laid end to end.
+- **Breaking:** `DoeError::ParameterOutOfRange` carries real bounds:
+  `min`, `max`, `exclusive_min`, `exclusive_max` as `Option<f64>`, `got` as
+  `f64`, and `index: Option<usize>`. In the WebAssembly error `min` and `max`
+  are always present (`null` on an open or unbounded side) and
+  `exclusive_min` / `exclusive_max` / `index` only when they apply. Messages
+  state the range checked (`k must be in [2, 7], got 0`, `alpha must be in
+  (0, 1), got 1.5`).
+
+### Added
+
+- `design::taguchi::max_factors(name)`: the most factors a Taguchi array holds,
+  the bound `taguchi_array` checks `k` against.
 
 ## [0.19.3] - 2026-10-07
 

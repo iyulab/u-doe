@@ -11,6 +11,8 @@
 //! u-doe = { version = "...", features = ["wasm"] }
 //! ```
 
+use std::ops::Bound;
+
 use serde::Serialize;
 use serde_json::json;
 use wasm_bindgen::prelude::*;
@@ -393,13 +395,13 @@ fn whole(
     // A `usize` is 32 bits on wasm32: a larger count is past the type's range.
     let cap = u32::MAX as usize;
     if value < 0.0 || value > cap as f64 {
-        return Err(WireError::from(DoeError::ParameterOutOfRange {
+        let max = if value < 0.0 { max } else { max.or(Some(cap)) };
+        let high = max.map_or(Bound::Unbounded, |max| Bound::Included(max as f64));
+        return Err(WireError::from(DoeError::out_of_range(
             parameter,
-            min,
-            max: if value < 0.0 { max } else { max.or(Some(cap)) },
-            // Saturates only beyond ±9.2e18.
-            got: value as i64,
-        }));
+            (Bound::Included(min as f64), high),
+            value,
+        )));
     }
     Ok(value as usize)
 }
@@ -532,10 +534,11 @@ struct PureErrorDto {
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///
 /// # Errors
-/// Throws an `Error` carrying `code` if `k` is out of range (2..=7).
+/// Throws an `Error` carrying `code`: `parameter_out_of_range` (`parameter`
+/// `"k"`, `min` 2, `max` 7) for any other `k`, negative included.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn full_factorial(k: f64) -> Result<JsValue, JsValue> {
-    let k = whole(k, "k", 0, None).map_err(js_err)?;
+    let k = whole(k, "k", 2, Some(7)).map_err(js_err)?;
     let design = crate::design::factorial::full_factorial(k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -549,7 +552,8 @@ pub fn full_factorial(k: f64) -> Result<JsValue, JsValue> {
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///
 /// # Errors
-/// Throws an `Error` carrying `code` if `k` is out of range (2..=6), `n_center == 0`,
+/// Throws an `Error` carrying `code` if `k` is out of range (2..=6) or `n_center == 0`
+/// (`parameter_out_of_range`),
 /// or `design_type` is unrecognised.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn ccd(
@@ -558,7 +562,7 @@ pub fn ccd(
     design_type: &str,
     n_center: f64,
 ) -> Result<JsValue, JsValue> {
-    let k = whole(k, "k", 0, None).map_err(js_err)?;
+    let k = whole(k, "k", 2, Some(6)).map_err(js_err)?;
     let n_center = whole(n_center, "n_center", 1, None).map_err(js_err)?;
     let alpha_type = match design_type {
         "FaceCentered" => crate::design::ccd::AlphaType::FaceCentered,
@@ -586,7 +590,7 @@ pub fn ccd(
 /// Throws an `Error` carrying `code` if `k` is not 3, 4, or 5, or `n_center == 0`.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn box_behnken(k: f64, n_center: f64) -> Result<JsValue, JsValue> {
-    let k = whole(k, "k", 0, None).map_err(js_err)?;
+    let k = whole(k, "k", 3, Some(5)).map_err(js_err)?;
     let n_center = whole(n_center, "n_center", 1, None).map_err(js_err)?;
     let design = crate::design::box_behnken::box_behnken(k, n_center).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -610,7 +614,8 @@ pub fn taguchi_array(
     name: &str,
     k: f64,
 ) -> Result<JsValue, JsValue> {
-    let k = whole(k, "k", 0, None).map_err(js_err)?;
+    let max = crate::design::taguchi::max_factors(name).map_err(js_err)?;
+    let k = whole(k, "k", 1, Some(max)).map_err(js_err)?;
     let design = crate::design::taguchi::taguchi_array(name, k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -620,10 +625,11 @@ pub fn taguchi_array(
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///
 /// # Errors
-/// Throws an `Error` carrying `code` if `k` is out of the supported range.
+/// Throws an `Error` carrying `code`: `parameter_out_of_range` (`parameter`
+/// `"k"`, `min` 2, `max` 12) for any other `k`.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn definitive_screening(k: f64) -> Result<JsValue, JsValue> {
-    let k = whole(k, "k", 0, None).map_err(js_err)?;
+    let k = whole(k, "k", 2, Some(12)).map_err(js_err)?;
     let design = crate::design::definitive_screening(k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -879,7 +885,7 @@ pub fn standard_fractions() -> Result<JsValue, JsValue> {
 /// Throws an `Error` carrying `code` if `k == 0` or `k > 19`.
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn plackett_burman(k: f64) -> Result<JsValue, JsValue> {
-    let k = whole(k, "k", 0, None).map_err(js_err)?;
+    let k = whole(k, "k", 1, Some(19)).map_err(js_err)?;
     let design = crate::design::plackett_burman::plackett_burman(k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -895,7 +901,7 @@ pub fn plackett_burman(k: f64) -> Result<JsValue, JsValue> {
 /// Factor names are "X1", "X2", ..., "Xq".
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn simplex_lattice(q: f64, m: f64) -> Result<JsValue, JsValue> {
-    let q = whole(q, "q", 0, None).map_err(js_err)?;
+    let q = whole(q, "q", 2, Some(crate::design::mixture::MAX_COMPONENTS)).map_err(js_err)?;
     let m = whole(m, "m", 1, Some(crate::design::mixture::MAX_DEGREE)).map_err(js_err)?;
     let design = crate::design::mixture::simplex_lattice(q, m).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
@@ -911,7 +917,7 @@ pub fn simplex_lattice(q: f64, m: f64) -> Result<JsValue, JsValue> {
 /// Factor names are "X1", "X2", ..., "Xq".
 #[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
 pub fn simplex_centroid(q: f64) -> Result<JsValue, JsValue> {
-    let q = whole(q, "q", 0, None).map_err(js_err)?;
+    let q = whole(q, "q", 2, Some(crate::design::mixture::MAX_COMPONENTS)).map_err(js_err)?;
     let design = crate::design::mixture::simplex_centroid(q).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
 }
@@ -1117,12 +1123,11 @@ pub fn rsm_predict(
     let coded = read_numbers(&coded, "coded")?;
 
     if factor_count == 0 {
-        return Err(js_err(crate::error::DoeError::ParameterOutOfRange {
-            parameter: "factor_count",
-            min: 1,
-            max: None,
-            got: 0,
-        }));
+        return Err(js_err(crate::error::DoeError::count_out_of_range(
+            "factor_count",
+            1..,
+            0,
+        )));
     }
     if coded.len() % factor_count != 0 {
         return Err(js_err(crate::error::DoeError::PointDimensionMismatch {
@@ -1287,9 +1292,10 @@ fn parse_response_specs(
 /// unrecognised goal; `invalid_desirability_limits` (with `index`, `goal`,
 /// `lower`, `target`, `upper`) if a spec's limits are not finite and ordered
 /// `lower < target` (Maximize), `target < upper` (Minimize) or
-/// `lower < target < upper` (Target); `value_out_of_domain` (with
-/// `index`, `parameter`, `value`, `domain`) if `s1` -- or `s2` for Target -- is not
-/// positive, or `importance` is negative; `response_count_mismatch`,
+/// `lower < target < upper` (Target); `parameter_out_of_range` (with
+/// `parameter`, `index`, `got` and the bounds) if `s1` -- or `s2` for Target --
+/// is not positive (`exclusive_min` 0), or `importance` is negative (`min` 0);
+/// `response_count_mismatch`,
 /// `empty_responses` or `no_weighted_response` for the lists as a whole.
 #[wasm_bindgen(unchecked_return_type = "DesirabilityResultDto")]
 pub fn desirability(
@@ -1421,9 +1427,10 @@ pub fn optimize_desirability(
 /// Throws an `Error` carrying `code`: `parameter_out_of_range` (with
 /// `parameter` `"k"`, `"p"`, `"n_replicates"` or `"model_terms"`) for `k = 0`,
 /// `p >= k`, no replicates, or a term count outside `1..=2^(k-p) − 1`;
-/// `value_out_of_domain` (with `parameter`, `value`, `domain`) unless
-/// `effect_size` and `sigma` are positive and `alpha` is strictly between 0
-/// and 1; `no_error_degrees_of_freedom` (with `terms`, `runs`) when the model
+/// `parameter_out_of_range` too unless `effect_size` and `sigma` are positive
+/// (`exclusive_min` 0) and `alpha` is strictly between 0 and 1
+/// (`exclusive_min` 0, `exclusive_max` 1); `value_not_finite` if one of those
+/// three is NaN or ±Infinity; `no_error_degrees_of_freedom` (with `terms`, `runs`) when the model
 /// uses every degree of freedom -- an unreplicated full model -- so no effect
 /// can be tested.
 ///
@@ -1556,22 +1563,23 @@ mod dto_strictness_tests {
     /// A negative count is a value out of range, not a malformed one.
     #[test]
     fn a_negative_count_is_out_of_range() {
-        let err = super::whole(-1.0, "k", 0, None).expect_err("negative");
+        let err = super::whole(-1.0, "k", 2, Some(7)).expect_err("negative");
         assert_eq!(
             err.fields,
             serde_json::json!({
                 "code": "parameter_out_of_range",
                 "parameter": "k",
-                "min": 0,
-                "max": null,
-                "got": -1,
+                "min": 2.0,
+                "max": 7.0,
+                "got": -1.0,
             })
         );
+        assert_eq!(err.message, "k must be in [2, 7], got -1");
         // Past what a wasm32 `usize` holds: the type's own bound.
         let err = super::whole(5e9, "n_steps", 0, None).expect_err("too large");
         assert_eq!(err.fields["code"], "parameter_out_of_range");
-        assert_eq!(err.fields["max"], u32::MAX);
-        assert_eq!(err.fields["got"], 5_000_000_000_i64);
+        assert_eq!(err.fields["max"], f64::from(u32::MAX));
+        assert_eq!(err.fields["got"], 5e9);
     }
 
     /// The bounds a binding states for a negative count are the bounds the
@@ -1583,10 +1591,43 @@ mod dto_strictness_tests {
         use crate::error::DoeError;
         let same = |binding: super::WireError, function: DoeError| {
             let mut expected = super::WireError::from(function).fields;
-            expected["got"] = serde_json::json!(-1);
+            assert_eq!(expected["code"], "parameter_out_of_range");
+            expected["got"] = serde_json::json!(-1.0);
             assert_eq!(binding.fields, expected);
         };
         let neg = |parameter, min, max| super::whole(-1.0, parameter, min, max).unwrap_err();
+        // Every design's factor count: `k: -1` and `k: 0` are one mistake,
+        // refused with one code and one range.
+        use crate::design::{
+            box_behnken::box_behnken,
+            ccd::ccd,
+            definitive_screening,
+            factorial::full_factorial,
+            mixture::{simplex_centroid, simplex_lattice, MAX_COMPONENTS},
+            plackett_burman::plackett_burman,
+            taguchi::taguchi_array,
+        };
+        same(neg("k", 2, Some(7)), full_factorial(0).unwrap_err());
+        same(neg("k", 2, Some(7)), full_factorial(8).unwrap_err());
+        same(
+            neg("k", 2, Some(6)),
+            ccd(0, AlphaType::FaceCentered, 1).unwrap_err(),
+        );
+        same(neg("k", 3, Some(5)), box_behnken(0, 1).unwrap_err());
+        same(neg("k", 2, Some(12)), definitive_screening(0).unwrap_err());
+        same(neg("k", 1, Some(19)), plackett_burman(0).unwrap_err());
+        same(
+            neg("q", 2, Some(MAX_COMPONENTS)),
+            simplex_lattice(0, 1).unwrap_err(),
+        );
+        same(
+            neg("q", 2, Some(MAX_COMPONENTS)),
+            simplex_centroid(0).unwrap_err(),
+        );
+        for name in ["L4", "L8", "L9", "L12", "L16", "L18", "L27"] {
+            let max = crate::design::taguchi::max_factors(name).expect("a known array");
+            same(neg("k", 1, Some(max)), taguchi_array(name, 0).unwrap_err());
+        }
         same(
             neg("n_center", 1, None),
             crate::design::ccd::ccd(2, AlphaType::FaceCentered, 0).unwrap_err(),
@@ -1685,12 +1726,7 @@ mod path_tests {
         });
         assert_eq!(e.fields["parameter"], "design");
         // A variant that names its own parameter keeps it.
-        let e = super::WireError::from(DoeError::ParameterOutOfRange {
-            parameter: "n_center",
-            min: 1,
-            max: None,
-            got: 0,
-        });
+        let e = super::WireError::from(DoeError::count_out_of_range("n_center", 1.., 0));
         assert_eq!(e.fields["parameter"], "n_center");
     }
 }

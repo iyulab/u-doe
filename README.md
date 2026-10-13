@@ -215,12 +215,11 @@ try {
 
 | `code` | Fields | Meaning |
 |---|---|---|
-| `invalid_factor_count` | `min`, `max`, `got` | Factor count outside the generator's range |
-| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `n_center`, `max_order`, the lattice degree `m`, or power's `k`, `p`, `n_replicates`, `model_terms` out of range; any count argument that is negative (with the bounds that count is checked against, `min: 0` when it has none) or above 2³² − 1 |
+| `parameter_out_of_range` | `parameter`, `min`, `max`, `exclusive_min`, `exclusive_max`, `index`, `got` | A numeric argument outside the range the function takes. `min` / `max` are closed bounds (`null` on a side that is open or unbounded); `exclusive_min` / `exclusive_max` appear only for an open end (`s1: 0` → `exclusive_min: 0`). Counts: a design's factor count `k` (or `q`) outside its generator's range — `full_factorial` 2–7, `ccd` 2–6, `box_behnken` 3–5, `definitive_screening` 2–12, `plackett_burman` 1–19, `taguchi_array` 1 to the array's columns, mixtures 2–12 — `n_center`, `max_order`, the lattice degree `m`, `factor_count`, power's `k`, `p`, `n_replicates`, `model_terms`; a negative count has the bounds of a too-small one (`k: -1` and `k: 0` both report `min: 2` for `full_factorial`; `min: 0` for a count with no lower check), and one above 2³² − 1 that `max`. Real settings: `s1`/`s2` and `effect_size`/`sigma` and `step_size` greater than 0, `importance` at least 0, `alpha` strictly between 0 and 1. `index` is present only for a setting of one spec — its position in `specs` |
 | `unsupported_fraction` | `k`, `p`, `supported` (`[[k, p], ...]`) | 2^(k-p) not in the standard table — see `standard_fractions()` |
 | `unknown_array` | `array`, `supported` | No Taguchi array of that name |
 | `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
-| `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument, a count argument included — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
+| `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument, a count argument or a real setting (`alpha`, `step_size`) included — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
 | `malformed_input` | `parameter` | An argument of the wrong shape or type, a JSON string, or a count argument with a fraction (`k = 2.5`, "must be a whole number") |
 | `empty_design` | `runs`, `factors`, `parameter` (`"design"`) | No runs or no factors |
 | `design_shape_mismatch` | `run`, `expected`, `got`, `parameter` (`"design"`), `index` (= `run`) | A run whose length differs from the number of factor names |
@@ -237,7 +236,6 @@ try {
 | `non_positive_response` | `run`, `value` | `signal_to_noise` `LargerIsBetter`: a response ≤ 0 |
 | `empty_responses` | — | `signal_to_noise` with no runs, `desirability` with no specs |
 | `invalid_desirability_limits` | `index`, `goal`, `lower`, `target`, `upper`, `parameter` (`"specs"`) | A spec whose ramp has no width or runs backwards (see `desirability`) |
-| `value_out_of_domain` | `index` (or `null`), `parameter`, `value`, `domain` | A real value outside its meaning: `s1`/`s2` not positive, `importance` negative, `effect_size`/`sigma` not positive, `alpha` not in (0, 1) |
 | `no_weighted_response` | — | Every spec has `importance` 0 |
 
 A field that has no value is `null` in results too (`curvature`, `pure_error`,
@@ -526,8 +524,8 @@ two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05)     // throws no_error_degree
 ```
 
 Throws `parameter_out_of_range` (`k = 0`, `p >= k`, no replicates, `model_terms` outside
-`1..=2^(k-p) − 1`), `value_out_of_domain` (a non-positive effect or σ, `alpha` outside (0, 1)),
-or `no_error_degrees_of_freedom` when the model uses every degree of freedom — an
+`1..=2^(k-p) − 1`, a non-positive effect or σ, `alpha` outside (0, 1)), `value_not_finite`
+(a NaN or ±Infinity effect, σ or `alpha`), or `no_error_degrees_of_freedom` when the model uses every degree of freedom — an
 unreplicated full model, where no effect can be tested. Until 0.15.0 this function used a
 normal approximation, which ignores the error degrees of freedom and overstates power most
 for small designs (0.760 instead of 0.648 in the first example).

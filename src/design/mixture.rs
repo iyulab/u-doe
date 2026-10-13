@@ -29,7 +29,7 @@ use crate::error::DoeError;
 /// Simplex centroid produces `2^q - 1` runs, so the bound is what keeps the
 /// shift that computes it from overflowing and the result from being a design
 /// nobody could execute: q = 12 is already 4,095 runs.
-const MAX_COMPONENTS: usize = 12;
+pub(crate) const MAX_COMPONENTS: usize = 12;
 
 /// Largest lattice degree `simplex_lattice` accepts. The run count is
 /// `C(q + m - 1, m)`, which grows past any practical experiment well before
@@ -55,22 +55,13 @@ pub(crate) const MAX_DEGREE: usize = 10;
 /// ```
 pub fn simplex_lattice(q: usize, m: usize) -> Result<DesignMatrix, DoeError> {
     if !(2..=MAX_COMPONENTS).contains(&q) {
-        return Err(DoeError::InvalidFactorCount {
-            min: 2,
-            max: MAX_COMPONENTS,
-            got: q,
-        });
+        return Err(DoeError::count_out_of_range("q", 2..=MAX_COMPONENTS, q));
     }
     if !(1..=MAX_DEGREE).contains(&m) {
         // A degree of 0 divides by zero and yields a design matrix of NaN,
         // which serialises to null and reaches the caller looking structurally
         // valid. Reject it rather than returning a design that means nothing.
-        return Err(DoeError::ParameterOutOfRange {
-            parameter: "m",
-            min: 1,
-            max: Some(MAX_DEGREE),
-            got: m as i64,
-        });
+        return Err(DoeError::count_out_of_range("m", 1..=MAX_DEGREE, m));
     }
     let mut rows: Vec<Vec<f64>> = Vec::new();
     let mut point = vec![0usize; q];
@@ -101,11 +92,7 @@ pub fn simplex_centroid(q: usize) -> Result<DesignMatrix, DoeError> {
     if !(2..=MAX_COMPONENTS).contains(&q) {
         // The run count is 2^q - 1, so an unchecked q overflows the shift below
         // long before it produces a design anyone could run.
-        return Err(DoeError::InvalidFactorCount {
-            min: 2,
-            max: MAX_COMPONENTS,
-            got: q,
-        });
+        return Err(DoeError::count_out_of_range("q", 2..=MAX_COMPONENTS, q));
     }
     let n_points = (1usize << q) - 1; // 2^q - 1
     let mut rows: Vec<Vec<f64>> = Vec::with_capacity(n_points);

@@ -225,11 +225,7 @@ const GENERATOR_TABLE: &[GeneratorEntry] = &[
 /// ```
 pub fn full_factorial(k: usize) -> Result<DesignMatrix, DoeError> {
     if !(2..=7).contains(&k) {
-        return Err(DoeError::InvalidFactorCount {
-            min: 2,
-            max: 7,
-            got: k,
-        });
+        return Err(DoeError::count_out_of_range("k", 2..=7, k));
     }
     let n = 1_usize << k; // 2^k
     let mut data = vec![vec![0.0_f64; k]; n];

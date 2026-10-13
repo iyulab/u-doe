@@ -29,9 +29,12 @@
 //! of Several Response Variables". *Journal of Quality Technology* 12(4),
 //! pp. 214–219.
 
+use std::ops::Bound::{self, Excluded, Unbounded};
+
 use crate::error::DoeError;
 
-const POSITIVE: &str = "finite and greater than 0";
+/// What a curve-shape exponent takes: greater than 0.
+const POSITIVE: (Bound<f64>, Bound<f64>) = (Excluded(0.0), Unbounded);
 
 /// Optimization goal for a single response.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -78,9 +81,10 @@ impl ResponseSpec {
     /// are finite and `lower < target` (`Maximize`), `target < upper`
     /// (`Minimize`) or `lower < target < upper` (`Target`) -- a ramp of no width
     /// or running backwards makes d a step or a constant.
-    /// [`DoeError::ValueOutOfDomain`] unless each exponent the goal
-    /// uses is finite and positive: `s = 0` makes every point of the ramp
-    /// d = 1, and a negative `s` sends d above 1.
+    /// [`DoeError::ParameterOutOfRange`] (`exclusive_min` 0) unless each
+    /// exponent the goal uses is positive -- `s = 0` makes every point of the
+    /// ramp d = 1, and a negative `s` sends d above 1 -- and
+    /// [`DoeError::ValueNotFinite`] if one is NaN or infinite.
     ///
     /// # Examples
     ///
@@ -114,22 +118,9 @@ impl ResponseSpec {
                 upper,
             });
         }
-        let exponent_ok = |s: f64| s.is_finite() && s > 0.0;
-        if !exponent_ok(s1) {
-            return Err(DoeError::ValueOutOfDomain {
-                index: None,
-                parameter: "s1",
-                value: s1,
-                domain: POSITIVE,
-            });
-        }
-        if goal == GoalType::Target && !exponent_ok(s2) {
-            return Err(DoeError::ValueOutOfDomain {
-                index: None,
-                parameter: "s2",
-                value: s2,
-                domain: POSITIVE,
-            });
+        DoeError::check_real("s1", s1, POSITIVE)?;
+        if goal == GoalType::Target {
+            DoeError::check_real("s2", s2, POSITIVE)?;
         }
         Ok(Self {
             goal,
@@ -204,8 +195,8 @@ impl ResponseSpec {
     /// out of the overall value.
     ///
     /// # Errors
-    /// [`DoeError::ValueOutOfDomain`] unless `importance` is finite
-    /// and not negative.
+    /// [`DoeError::ValueNotFinite`] if `importance` is NaN or infinite,
+    /// [`DoeError::ParameterOutOfRange`] (`min` 0) if it is negative.
     ///
     /// # Examples
     ///
@@ -217,14 +208,7 @@ impl ResponseSpec {
     /// assert!((spec.importance() - 3.0).abs() < 1e-12);
     /// ```
     pub fn with_importance(mut self, importance: f64) -> Result<Self, DoeError> {
-        if !(importance.is_finite() && importance >= 0.0) {
-            return Err(DoeError::ValueOutOfDomain {
-                index: None,
-                parameter: "importance",
-                value: importance,
-                domain: "finite and not negative",
-            });
-        }
+        DoeError::check_real("importance", importance, 0.0..)?;
         self.importance = importance;
         Ok(self)
     }
@@ -399,7 +383,9 @@ pub enum DesirabilityOptimum {
 /// # Errors
 /// [`DoeError::EmptyResponses`] if `specs` or `candidates` is empty;
 /// [`DoeError::ResponseCountMismatch`] if a candidate is not one response per
-/// specification; [`DoeError::ValueOutOfDomain`] if a response is not finite --
+/// specification; [`DoeError::ValueNotFinite`] (`parameter` `"candidates"`,
+/// `index` the response's position in the candidates laid end to end) if a
+/// response is not finite --
 /// a NaN is not a score, and letting it fall through as d = 0 would report a
 /// reachable response as unreachable; [`DoeError::NoWeightedResponse`] if every
 /// importance is 0.
@@ -427,22 +413,20 @@ pub fn optimize_desirability(
     if specs.is_empty() || candidates.is_empty() {
         return Err(DoeError::EmptyResponses);
     }
-    for candidate in candidates {
+    for (row, candidate) in candidates.iter().enumerate() {
         if candidate.len() != specs.len() {
             return Err(DoeError::ResponseCountMismatch {
                 expected: specs.len(),
                 got: candidate.len(),
             });
         }
-        for (index, &y) in candidate.iter().enumerate() {
-            if !y.is_finite() {
-                return Err(DoeError::ValueOutOfDomain {
-                    index: Some(index),
-                    parameter: "response",
-                    value: y,
-                    domain: "finite",
-                });
-            }
+        // Reported as a position in the candidates laid end to end, the
+        // flat list the WebAssembly binding takes.
+        if let Some(column) = candidate.iter().position(|y| !y.is_finite()) {
+            return Err(DoeError::ValueNotFinite {
+                parameter: "candidates",
+                index: Some(row * specs.len() + column),
+            });
         }
     }
 
@@ -605,14 +589,12 @@ mod tests {
             })
         ));
         for bad in [f64::NAN, f64::INFINITY] {
-            assert!(
-                matches!(
-                    optimize_desirability(&specs, &[vec![50.0], vec![bad]]),
-                    Err(DoeError::ValueOutOfDomain {
-                        parameter: "response",
-                        ..
-                    })
-                ),
+            assert_eq!(
+                optimize_desirability(&specs, &[vec![50.0], vec![bad]]),
+                Err(DoeError::ValueNotFinite {
+                    parameter: "candidates",
+                    index: Some(1),
+                }),
                 "{bad} must not be scored"
             );
         }
@@ -836,39 +818,60 @@ mod tests {
     }
 
     #[test]
-    fn refuses_exponents_and_weights_outside_their_domain() {
-        for s in [0.0, -1.0, f64::INFINITY, f64::NAN] {
-            assert!(
-                matches!(
-                    ResponseSpec::maximize(0.0, 10.0, 10.0, s),
-                    Err(DoeError::ValueOutOfDomain {
-                        parameter: "s1",
-                        ..
-                    })
-                ),
-                "s1 = {s}"
+    fn refuses_exponents_and_weights_outside_their_range() {
+        let positive = |parameter, got| DoeError::ParameterOutOfRange {
+            parameter,
+            index: None,
+            min: None,
+            max: None,
+            exclusive_min: Some(0.0),
+            exclusive_max: None,
+            got,
+        };
+        for s in [0.0, -1.0] {
+            assert_eq!(
+                ResponseSpec::maximize(0.0, 10.0, 10.0, s).map(|_| ()),
+                Err(positive("s1", s))
             );
-            assert!(
-                matches!(
-                    ResponseSpec::target(0.0, 5.0, 10.0, 1.0, s),
-                    Err(DoeError::ValueOutOfDomain {
-                        parameter: "s2",
-                        ..
-                    })
-                ),
-                "s2 = {s}"
+            assert_eq!(
+                ResponseSpec::target(0.0, 5.0, 10.0, 1.0, s).map(|_| ()),
+                Err(positive("s2", s))
             );
         }
-        for r in [-1.0, f64::INFINITY, f64::NAN] {
-            assert!(
-                matches!(
-                    maximize(0.0, 10.0, 10.0, 1.0).with_importance(r),
-                    Err(DoeError::ValueOutOfDomain {
-                        parameter: "importance",
-                        ..
-                    })
-                ),
-                "importance = {r}"
+        let not_finite = |parameter| DoeError::ValueNotFinite {
+            parameter,
+            index: None,
+        };
+        for s in [f64::INFINITY, f64::NAN] {
+            assert_eq!(
+                ResponseSpec::maximize(0.0, 10.0, 10.0, s).map(|_| ()),
+                Err(not_finite("s1"))
+            );
+            assert_eq!(
+                ResponseSpec::target(0.0, 5.0, 10.0, 1.0, s).map(|_| ()),
+                Err(not_finite("s2"))
+            );
+        }
+        assert_eq!(
+            maximize(0.0, 10.0, 10.0, 1.0)
+                .with_importance(-1.0)
+                .map(|_| ()),
+            Err(DoeError::ParameterOutOfRange {
+                parameter: "importance",
+                index: None,
+                min: Some(0.0),
+                max: None,
+                exclusive_min: None,
+                exclusive_max: None,
+                got: -1.0,
+            })
+        );
+        for r in [f64::INFINITY, f64::NAN] {
+            assert_eq!(
+                maximize(0.0, 10.0, 10.0, 1.0)
+                    .with_importance(r)
+                    .map(|_| ()),
+                Err(not_finite("importance"))
             );
         }
     }

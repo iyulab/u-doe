@@ -70,19 +70,10 @@ pub fn rotatable_alpha(k: usize) -> f64 {
 /// ```
 pub fn ccd(k: usize, alpha_type: AlphaType, n_center: usize) -> Result<DesignMatrix, DoeError> {
     if !(2..=6).contains(&k) {
-        return Err(DoeError::InvalidFactorCount {
-            min: 2,
-            max: 6,
-            got: k,
-        });
+        return Err(DoeError::count_out_of_range("k", 2..=6, k));
     }
     if n_center == 0 {
-        return Err(DoeError::ParameterOutOfRange {
-            parameter: "n_center",
-            min: 1,
-            max: None,
-            got: 0,
-        });
+        return Err(DoeError::count_out_of_range("n_center", 1.., 0));
     }
 
     let alpha_val = match alpha_type {
