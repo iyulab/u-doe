@@ -47,6 +47,23 @@ pub enum DoeError {
         parameter: &'static str,
         index: Option<usize>,
     },
+    /// An input that has to hold something holds nothing. `parameter` names
+    /// it: `design` (a design with no runs), `factor_names` (a design with no
+    /// factors), `responses`, `specs`, `candidates`.
+    EmptyInput { parameter: &'static str },
+    /// Fewer items in `parameter` than the calculation needs: at least `min`,
+    /// `got`. `index` is the position, in that list, of the element that falls
+    /// short when the shortfall is one element's (a run with too few replicate
+    /// measurements). `counted` says what was counted, for the message.
+    InsufficientData {
+        parameter: &'static str,
+        #[cfg_attr(feature = "wasm", serde(skip_serializing_if = "Option::is_none"))]
+        index: Option<usize>,
+        min: usize,
+        got: usize,
+        #[cfg_attr(feature = "wasm", serde(skip))]
+        counted: &'static str,
+    },
     /// The 2^(k-p) fraction is not in the standard generator table. `supported`
     /// lists every `(k, p)` that is.
     UnsupportedFraction {
@@ -59,8 +76,6 @@ pub enum DoeError {
         array: String,
         supported: &'static [&'static str],
     },
-    /// A design with no runs or no factors: there is nothing to analyse.
-    EmptyDesign { runs: usize, factors: usize },
     /// A run has a different number of entries from the number of factor names.
     DesignShapeMismatch {
         run: usize,
@@ -114,18 +129,8 @@ pub enum DoeError {
     /// A point given to a fitted model has a different number of coordinates
     /// from the model's factors.
     PointDimensionMismatch { expected: usize, got: usize },
-    /// Lenth's method needs at least `needed` distinct contrasts.
-    TooFewContrasts { needed: usize, got: usize },
     /// A coding range whose low end is not below its high end.
     InvalidCodingRange { low: f64, high: f64 },
-    /// No responses were given.
-    EmptyResponses,
-    /// A run has fewer replicate measurements than the calculation needs.
-    TooFewReplicates {
-        run: usize,
-        needed: usize,
-        got: usize,
-    },
     /// A response that must be strictly positive is not.
     NonPositiveResponse { run: usize, value: f64 },
     /// A desirability specification whose ramp has no width or runs
@@ -229,9 +234,10 @@ impl DoeError {
         match self {
             DoeError::ParameterOutOfRange { .. } => "parameter_out_of_range",
             DoeError::ValueNotFinite { .. } => "value_not_finite",
+            DoeError::EmptyInput { .. } => "empty_input",
+            DoeError::InsufficientData { .. } => "insufficient_data",
             DoeError::UnsupportedFraction { .. } => "unsupported_fraction",
             DoeError::UnknownArray { .. } => "unknown_array",
-            DoeError::EmptyDesign { .. } => "empty_design",
             DoeError::DesignShapeMismatch { .. } => "design_shape_mismatch",
             DoeError::ResponseCountMismatch { .. } => "response_count_mismatch",
             DoeError::UnknownEffect { .. } => "unknown_effect",
@@ -244,10 +250,7 @@ impl DoeError {
             DoeError::SingularModel => "singular_model",
             DoeError::CoefficientCountMismatch { .. } => "coefficient_count_mismatch",
             DoeError::PointDimensionMismatch { .. } => "point_dimension_mismatch",
-            DoeError::TooFewContrasts { .. } => "too_few_contrasts",
             DoeError::InvalidCodingRange { .. } => "invalid_coding_range",
-            DoeError::EmptyResponses => "empty_responses",
-            DoeError::TooFewReplicates { .. } => "too_few_replicates",
             DoeError::NonPositiveResponse { .. } => "non_positive_response",
             DoeError::InvalidDesirabilityLimits { .. } => "invalid_desirability_limits",
             DoeError::NoWeightedResponse => "no_weighted_response",
@@ -277,6 +280,20 @@ impl std::fmt::Display for DoeError {
                 Some(i) => write!(f, "{parameter} at position {i} must be a finite number"),
                 None => write!(f, "{parameter} must be a finite number"),
             },
+            DoeError::EmptyInput { parameter } => write!(f, "{parameter} must not be empty"),
+            DoeError::InsufficientData {
+                parameter,
+                index,
+                min,
+                got,
+                counted,
+            } => {
+                match index {
+                    Some(i) => write!(f, "{parameter}[{i}]")?,
+                    None => write!(f, "{parameter}")?,
+                }
+                write!(f, ": needs at least {min} {counted}, got {got}")
+            }
             DoeError::UnsupportedFraction { k, p, supported } => {
                 write!(
                     f,
@@ -294,10 +311,6 @@ impl std::fmt::Display for DoeError {
                 f,
                 "unknown Taguchi array '{array}'; supported: {}",
                 supported.join(", ")
-            ),
-            DoeError::EmptyDesign { runs, factors } => write!(
-                f,
-                "design has {runs} runs and {factors} factors; both must be non-zero"
             ),
             DoeError::DesignShapeMismatch { run, expected, got } => write!(
                 f,
@@ -380,18 +393,9 @@ impl std::fmt::Display for DoeError {
                 f,
                 "the model has {expected} factors but the point has {got} coordinates"
             ),
-            DoeError::TooFewContrasts { needed, got } => write!(
-                f,
-                "Lenth's method needs at least {needed} distinct contrasts, got {got}"
-            ),
             DoeError::InvalidCodingRange { low, high } => {
                 write!(f, "low ({low}) must be strictly less than high ({high})")
             }
-            DoeError::EmptyResponses => write!(f, "responses must not be empty"),
-            DoeError::TooFewReplicates { run, needed, got } => write!(
-                f,
-                "run {run}: needs at least {needed} replicates, got {got}"
-            ),
             DoeError::NonPositiveResponse { run, value } => write!(
                 f,
                 "run {run}: responses must be greater than 0, got {value}"
@@ -481,9 +485,8 @@ mod tests {
                 array: "L5".into(),
                 supported: &["L4", "L8"],
             },
-            DoeError::EmptyDesign {
-                runs: 0,
-                factors: 0,
+            DoeError::EmptyInput {
+                parameter: "design",
             },
             DoeError::DesignShapeMismatch {
                 run: 1,
@@ -532,16 +535,26 @@ mod tests {
                 expected: 2,
                 got: 3,
             },
-            DoeError::TooFewContrasts { needed: 3, got: 2 },
+            DoeError::InsufficientData {
+                parameter: "effects",
+                index: None,
+                min: 3,
+                got: 2,
+                counted: "distinct contrasts for Lenth's method",
+            },
             DoeError::InvalidCodingRange {
                 low: 2.0,
                 high: 1.0,
             },
-            DoeError::EmptyResponses,
-            DoeError::TooFewReplicates {
-                run: 0,
-                needed: 2,
+            DoeError::EmptyInput {
+                parameter: "responses",
+            },
+            DoeError::InsufficientData {
+                parameter: "responses",
+                index: Some(0),
+                min: 2,
                 got: 1,
+                counted: "replicates",
             },
             DoeError::NonPositiveResponse {
                 run: 2,
@@ -695,6 +708,52 @@ mod tests {
                 index: None
             }),
             serde_json::json!({ "code": "value_not_finite", "parameter": "sigma", "index": null })
+        );
+    }
+
+    /// An empty input and too little data are the shared reasons, under the
+    /// shared names and fields: `parameter`, `min`, `got`, and `index` for the
+    /// element that falls short. The words for the message stay out.
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn shared_reasons_serialize_under_the_shared_names() {
+        let v = |e: DoeError| serde_json::to_value(&e).expect("DoeError serializes");
+        assert_eq!(
+            v(DoeError::EmptyInput {
+                parameter: "factor_names"
+            }),
+            serde_json::json!({ "code": "empty_input", "parameter": "factor_names" })
+        );
+        assert_eq!(
+            v(DoeError::InsufficientData {
+                parameter: "responses",
+                index: Some(3),
+                min: 2,
+                got: 1,
+                counted: "replicates",
+            }),
+            serde_json::json!({
+                "code": "insufficient_data",
+                "parameter": "responses",
+                "index": 3,
+                "min": 2,
+                "got": 1,
+            })
+        );
+        assert_eq!(
+            v(DoeError::InsufficientData {
+                parameter: "effects",
+                index: None,
+                min: 3,
+                got: 2,
+                counted: "distinct contrasts for Lenth's method",
+            }),
+            serde_json::json!({
+                "code": "insufficient_data",
+                "parameter": "effects",
+                "min": 3,
+                "got": 2,
+            })
         );
     }
 

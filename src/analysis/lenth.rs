@@ -114,7 +114,13 @@ pub fn lenth(design: &DesignMatrix, effects: &[EffectEstimate]) -> Result<LenthR
 
     let m = magnitudes.len();
     if m < 3 {
-        return Err(DoeError::TooFewContrasts { needed: 3, got: m });
+        return Err(DoeError::InsufficientData {
+            parameter: "effects",
+            index: None,
+            min: 3,
+            got: m,
+            counted: "distinct contrasts for Lenth's method",
+        });
     }
 
     let s0 = 1.5 * median(&magnitudes);
@@ -234,7 +240,13 @@ mod tests {
         let effects = estimate_effects(&design, &[1.0, 2.0, 3.0, 5.0], 1).expect("A, B");
         assert!(matches!(
             lenth(&design, &effects),
-            Err(DoeError::TooFewContrasts { needed: 3, got: 2 })
+            Err(DoeError::InsufficientData {
+                parameter: "effects",
+                index: None,
+                min: 3,
+                got: 2,
+                ..
+            })
         ));
     }
 }

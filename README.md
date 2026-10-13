@@ -221,7 +221,8 @@ try {
 | `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
 | `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument, a count argument or a real setting (`alpha`, `step_size`) included — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
 | `malformed_input` | `parameter` | An argument of the wrong shape or type, a JSON string, or a count argument with a fraction (`k = 2.5`, "must be a whole number") |
-| `empty_design` | `runs`, `factors`, `parameter` (`"design"`) | No runs or no factors |
+| `empty_input` | `parameter` | An input with nothing in it: `"design"` (no runs), `"factor_names"` (no factors), `"responses"` (`signal_to_noise` with no runs), `"specs"` (`desirability` / `optimize_desirability` with no specs), `"candidates"` (`optimize_desirability` with no candidates) |
+| `insufficient_data` | `parameter`, `min`, `got`, `index` | Fewer values than the calculation needs: `signal_to_noise` with a run of `responses` holding fewer replicate measurements than the goal needs (1, or 2 for `NominalIsBest`) — `index` is that run |
 | `design_shape_mismatch` | `run`, `expected`, `got`, `parameter` (`"design"`), `index` (= `run`) | A run whose length differs from the number of factor names |
 | `response_count_mismatch` | `expected`, `got`, `parameter` (`"responses"`, or `"candidates"` for `optimize_desirability`) | Not one response per run (per spec, for `desirability`) |
 | `unknown_effect` | `effect` | An effect name that is not factor names joined with `":"` |
@@ -232,9 +233,7 @@ try {
 | `no_error_degrees_of_freedom` | `terms`, `runs` | Power: the model uses all `runs - 1` degrees of freedom, leaving none to test an effect against |
 | `singular_model` | — | The runs do not support the model (e.g. a quadratic fit on a two-level design) |
 | `coefficient_count_mismatch` | `factors`, `expected`, `got` | `steepest_ascent` coefficients not of a quadratic model in that many factors |
-| `too_few_replicates` | `run`, `needed`, `got` | `signal_to_noise`: a run with too few measurements for the goal |
 | `non_positive_response` | `run`, `value` | `signal_to_noise` `LargerIsBetter`: a response ≤ 0 |
-| `empty_responses` | — | `signal_to_noise` with no runs, `desirability` with no specs |
 | `invalid_desirability_limits` | `index`, `goal`, `lower`, `target`, `upper`, `parameter` (`"specs"`) | A spec whose ramp has no width or runs backwards (see `desirability`) |
 | `no_weighted_response` | — | Every spec has `importance` 0 |
 
@@ -503,7 +502,7 @@ a user to relax the trade-off rather than move a limit. A specification with
 importance 0 is left out of D and is never listed.
 
 Ties go to the first strictly best candidate. Errors: everything `desirability`
-throws, plus `empty_responses` for no candidates, `response_count_mismatch` when
+throws, plus `empty_input` (`parameter: "candidates"`) for no candidates, `response_count_mismatch` when
 `candidates.length` is not a multiple of `specs.length`, and
 `value_not_finite` (`parameter: "candidates"`, `index`) for a response that is
 not finite.

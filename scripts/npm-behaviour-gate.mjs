@@ -66,8 +66,13 @@ ok(e.code === 'no_error_degrees_of_freedom' && e.terms === 7 && e.runs === 8, `c
 
 // Inputs that once trapped the module are refused like any other.
 e = refusal(() => m.fit_rsm([], [], []))
-ok(e instanceof Error && e.code === 'empty_design', `fit_rsm([]): ${e}`)
+ok(e instanceof Error && e.code === 'empty_input' && e.parameter === 'design', `fit_rsm([]): ${e.code} ${e.parameter}`)
 ok(typeof m.full_factorial(2).run_count === 'number', 'the module must still answer after a refusal')
+
+// Too few values is the shared reason, at the element that falls short.
+e = refusal(() => m.signal_to_noise([[1, 2], [3]], 'NominalIsBest'))
+ok(e.code === 'insufficient_data' && e.parameter === 'responses' && e.index === 1 && e.min === 2 && e.got === 1,
+  `signal_to_noise short run: ${e.code} ${e.parameter}@${e.index} min=${e.min} got=${e.got}`)
 
 // A fitted surface can be evaluated, and says what its coefficients are.
 // The oracle is worked by hand: k=2, coded (0.5, -1),

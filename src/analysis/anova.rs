@@ -904,9 +904,8 @@ mod tests {
         };
         assert!(matches!(
             doe_anova(&empty, &[], &["A"]),
-            Err(DoeError::EmptyDesign {
-                runs: 0,
-                factors: 0
+            Err(DoeError::EmptyInput {
+                parameter: "design"
             })
         ));
     }

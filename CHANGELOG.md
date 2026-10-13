@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** an empty input and too little data are refused under the
+  shared reasons `empty_input` and `insufficient_data`, like every other
+  refusal of that kind, instead of names of their own.
+  - A design with no runs or no factors is `empty_input` with `parameter`
+    `"design"` (no runs) or `"factor_names"` (no factors). It was
+    `empty_design` with `runs` and `factors`; the `parameter` now says which of
+    the two is empty. `DesignMatrix::check_not_empty` makes the check.
+  - No runs for `signal_to_noise` is `empty_input` (`parameter: "responses"`);
+    no specs for `desirability` / `optimize_desirability` is `empty_input`
+    (`"specs"`), and no candidates `empty_input` (`"candidates"`). They were
+    `empty_responses` with no field, one code for all three.
+  - A run with fewer replicate measurements than `signal_to_noise` needs is
+    `insufficient_data` with `parameter: "responses"`, `index` (the run),
+    `min` and `got`. It was `too_few_replicates` with `run`, `needed` and `got`.
+  - Fewer than three distinct contrasts for Lenth's method is
+    `DoeError::InsufficientData` with `parameter: "effects"`, `min: 3` and
+    `got`; it was `TooFewContrasts`.
+  - `DoeError::EmptyDesign`, `EmptyResponses`, `TooFewContrasts` and
+    `TooFewReplicates` are replaced by `DoeError::EmptyInput { parameter }` and
+    `DoeError::InsufficientData { parameter, index, min, got, counted }`.
+
 ## [0.20.0] - 2026-10-13
 
 Depends on u-numflow 0.11.

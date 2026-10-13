@@ -292,7 +292,7 @@ impl ResponseSpec {
 /// a positive weight has d = 0; a response with importance 0 is left out.
 ///
 /// # Errors
-/// [`DoeError::EmptyResponses`] if there are no specifications;
+/// [`DoeError::EmptyInput`] (`specs`) if there are no specifications;
 /// [`DoeError::ResponseCountMismatch`] unless there is one response per
 /// specification; [`DoeError::NoWeightedResponse`] if every importance is 0.
 ///
@@ -309,7 +309,7 @@ impl ResponseSpec {
 /// ```
 pub fn overall_desirability(specs: &[ResponseSpec], responses: &[f64]) -> Result<f64, DoeError> {
     if specs.is_empty() {
-        return Err(DoeError::EmptyResponses);
+        return Err(DoeError::EmptyInput { parameter: "specs" });
     }
     if specs.len() != responses.len() {
         return Err(DoeError::ResponseCountMismatch {
@@ -381,7 +381,8 @@ pub enum DesirabilityOptimum {
 /// here rather than in each caller is [`DesirabilityOptimum`]'s doc comment.
 ///
 /// # Errors
-/// [`DoeError::EmptyResponses`] if `specs` or `candidates` is empty;
+/// [`DoeError::EmptyInput`] (`parameter` naming which) if `specs` or
+/// `candidates` is empty;
 /// [`DoeError::ResponseCountMismatch`] if a candidate is not one response per
 /// specification; [`DoeError::ValueNotFinite`] (`parameter` `"candidates"`,
 /// `index` the response's position in the candidates laid end to end) if a
@@ -410,8 +411,13 @@ pub fn optimize_desirability(
     specs: &[ResponseSpec],
     candidates: &[Vec<f64>],
 ) -> Result<DesirabilityOptimum, DoeError> {
-    if specs.is_empty() || candidates.is_empty() {
-        return Err(DoeError::EmptyResponses);
+    if specs.is_empty() {
+        return Err(DoeError::EmptyInput { parameter: "specs" });
+    }
+    if candidates.is_empty() {
+        return Err(DoeError::EmptyInput {
+            parameter: "candidates",
+        });
     }
     for (row, candidate) in candidates.iter().enumerate() {
         if candidate.len() != specs.len() {
@@ -575,11 +581,13 @@ mod tests {
         let specs = vec![ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0).expect("ordered")];
         assert!(matches!(
             optimize_desirability(&specs, &[]),
-            Err(DoeError::EmptyResponses)
+            Err(DoeError::EmptyInput {
+                parameter: "candidates"
+            })
         ));
         assert!(matches!(
             optimize_desirability(&[], &[vec![1.0]]),
-            Err(DoeError::EmptyResponses)
+            Err(DoeError::EmptyInput { parameter: "specs" })
         ));
         assert!(matches!(
             optimize_desirability(&specs, &[vec![1.0, 2.0]]),
@@ -881,7 +889,7 @@ mod tests {
         let spec = maximize(0.0, 10.0, 10.0, 1.0);
         assert_eq!(
             overall_desirability(&[], &[]),
-            Err(DoeError::EmptyResponses)
+            Err(DoeError::EmptyInput { parameter: "specs" })
         );
         assert_eq!(
             overall_desirability(std::slice::from_ref(&spec), &[1.0, 2.0]),

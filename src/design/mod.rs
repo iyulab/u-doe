@@ -70,6 +70,28 @@ impl DesignMatrix {
         None
     }
 
+    /// Refuses a design with no runs or no factors: there is nothing to
+    /// analyse. It is reachable -- `data` and `factor_names` are public fields
+    /// and the WebAssembly bindings fill them straight from caller input, so
+    /// `[]` arrives as a design.
+    ///
+    /// # Errors
+    /// [`DoeError::EmptyInput`] with `parameter` `design` when there are no
+    /// runs, else `factor_names` when there are no factors.
+    pub fn check_not_empty(&self) -> Result<(), DoeError> {
+        if self.data.is_empty() {
+            Err(DoeError::EmptyInput {
+                parameter: "design",
+            })
+        } else if self.factor_names.is_empty() {
+            Err(DoeError::EmptyInput {
+                parameter: "factor_names",
+            })
+        } else {
+            Ok(())
+        }
+    }
+
     /// Refuses a run whose length differs from the number of factor names.
     ///
     /// `data` and `factor_names` are public fields and the WebAssembly bindings

@@ -79,7 +79,7 @@ pub struct AscentStep {
 /// # Errors
 ///
 /// [`DoeError::ResponseCountMismatch`] if `responses.len() != run_count`;
-/// [`DoeError::EmptyDesign`] or [`DoeError::DesignShapeMismatch`] for a design
+/// [`DoeError::EmptyInput`] or [`DoeError::DesignShapeMismatch`] for a design
 /// with no runs or factors, or with a run of the wrong length;
 /// [`DoeError::OverSpecifiedModel`] if the full quadratic model has more
 /// coefficients than there are runs; [`DoeError::SingularModel`] if the runs do
@@ -109,12 +109,7 @@ pub fn fit_rsm(design: &DesignMatrix, responses: &[f64]) -> Result<RsmModel, Doe
     }
     // An empty design would reach `Matrix::from_rows`, which asserts; a
     // WebAssembly caller would see that as a trap rather than an error.
-    if n == 0 || k == 0 {
-        return Err(DoeError::EmptyDesign {
-            runs: n,
-            factors: k,
-        });
-    }
+    design.check_not_empty()?;
     design.check_shape()?;
     // Intercept, k linear, k quadratic, k(k-1)/2 interaction terms.
     let terms = 2 * k + k * (k - 1) / 2;
@@ -491,9 +486,8 @@ mod tests {
         };
         assert_eq!(
             fit_rsm(&empty, &[]).map(|m| m.factor_count),
-            Err(DoeError::EmptyDesign {
-                runs: 0,
-                factors: 0
+            Err(DoeError::EmptyInput {
+                parameter: "design"
             })
         );
         let ragged = DesignMatrix {

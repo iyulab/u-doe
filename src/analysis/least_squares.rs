@@ -123,19 +123,13 @@ pub fn fit_least_squares(
     effect_names: &[&str],
 ) -> Result<LeastSquaresFit, DoeError> {
     let n = design.run_count();
-    let k = design.factor_count();
     if responses.len() != n {
         return Err(DoeError::ResponseCountMismatch {
             expected: n,
             got: responses.len(),
         });
     }
-    if n == 0 || k == 0 {
-        return Err(DoeError::EmptyDesign {
-            runs: n,
-            factors: k,
-        });
-    }
+    design.check_not_empty()?;
     design.check_shape()?;
     if let Some((run, factor, value)) = design.two_level_violation() {
         return Err(DoeError::NotTwoLevelCoded { run, factor, value });

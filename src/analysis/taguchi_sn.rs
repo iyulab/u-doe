@@ -45,9 +45,10 @@ pub enum SnGoal {
 /// A `Vec<f64>` of SN values in dB, one per run, in the same order as `responses`.
 ///
 /// # Errors
-/// * [`DoeError::EmptyResponses`] if `responses` is empty.
-/// * [`DoeError::TooFewReplicates`] if any run has zero replicates, or `goal` is
-///   `NominalIsBest` and any run has fewer than 2 replicates.
+/// * [`DoeError::EmptyInput`] (`responses`) if `responses` is empty.
+/// * [`DoeError::InsufficientData`] (`responses`, `index` = the run) if any run
+///   has zero replicates, or `goal` is `NominalIsBest` and any run has fewer
+///   than 2 replicates.
 /// * [`DoeError::NonPositiveResponse`] if `goal` is `LargerIsBetter` and any
 ///   measurement is ≤ 0.
 ///
@@ -62,18 +63,16 @@ pub enum SnGoal {
 /// ```
 pub fn signal_to_noise(responses: &[Vec<f64>], goal: SnGoal) -> Result<Vec<f64>, DoeError> {
     if responses.is_empty() {
-        return Err(DoeError::EmptyResponses);
+        return Err(DoeError::EmptyInput {
+            parameter: "responses",
+        });
     }
 
     let mut sn_values = Vec::with_capacity(responses.len());
 
     for (run_idx, run) in responses.iter().enumerate() {
         if run.is_empty() {
-            return Err(DoeError::TooFewReplicates {
-                run: run_idx,
-                needed: 1,
-                got: 0,
-            });
+            return Err(too_few_replicates(run_idx, 1, 0));
         }
 
         let r = run.len() as f64;
@@ -100,11 +99,7 @@ pub fn signal_to_noise(responses: &[Vec<f64>], goal: SnGoal) -> Result<Vec<f64>,
 
             SnGoal::NominalIsBest => {
                 if run.len() < 2 {
-                    return Err(DoeError::TooFewReplicates {
-                        run: run_idx,
-                        needed: 2,
-                        got: run.len(),
-                    });
+                    return Err(too_few_replicates(run_idx, 2, run.len()));
                 }
                 let mean = run.iter().sum::<f64>() / r;
                 let var = run.iter().map(|&y| (y - mean).powi(2)).sum::<f64>() / (r - 1.0);
@@ -121,6 +116,18 @@ pub fn signal_to_noise(responses: &[Vec<f64>], goal: SnGoal) -> Result<Vec<f64>,
     }
 
     Ok(sn_values)
+}
+
+/// Run `run` of `responses` has `got` replicate measurements where the
+/// formula needs `min`.
+fn too_few_replicates(run: usize, min: usize, got: usize) -> DoeError {
+    DoeError::InsufficientData {
+        parameter: "responses",
+        index: Some(run),
+        min,
+        got,
+        counted: "replicates",
+    }
 }
 
 /// Mean SN per level for a single factor, used to identify the optimal setting.
@@ -277,8 +284,36 @@ mod tests {
 
     #[test]
     fn nb_insufficient_replicates_error() {
-        let r = vec![vec![10.0]]; // need >= 2 for NB
-        assert!(signal_to_noise(&r, SnGoal::NominalIsBest).is_err());
+        let r = vec![vec![10.0, 11.0], vec![10.0]]; // need >= 2 for NB
+        assert_eq!(
+            signal_to_noise(&r, SnGoal::NominalIsBest),
+            Err(DoeError::InsufficientData {
+                parameter: "responses",
+                index: Some(1),
+                min: 2,
+                got: 1,
+                counted: "replicates",
+            })
+        );
+    }
+
+    /// No runs, and a run with no measurements, are the shared reasons: an
+    /// empty input, and too few values in one element of it.
+    #[test]
+    fn empty_responses_and_an_empty_run_are_refused() {
+        assert_eq!(
+            signal_to_noise(&[], SnGoal::SmallerIsBetter),
+            Err(DoeError::EmptyInput {
+                parameter: "responses"
+            })
+        );
+        let err = signal_to_noise(&[vec![1.0], vec![]], SnGoal::SmallerIsBetter)
+            .expect_err("run 1 has no measurements");
+        assert_eq!(err.code(), "insufficient_data");
+        assert_eq!(
+            err.to_string(),
+            "responses[1]: needs at least 1 replicates, got 0"
+        );
     }
 
     #[test]

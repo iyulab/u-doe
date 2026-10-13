@@ -169,15 +169,7 @@ pub(crate) fn contrast_effects(
         });
     }
 
-    // A design with no runs or no factors has nothing to estimate. It is
-    // reachable: `DesignMatrix` has public fields and the WebAssembly entry
-    // points build one straight from caller JSON, so `[]` arrives here.
-    if n == 0 || k == 0 {
-        return Err(DoeError::EmptyDesign {
-            runs: n,
-            factors: k,
-        });
-    }
+    design.check_not_empty()?;
     design.check_shape()?;
 
     // The contrast for a term is the product of its factor columns. That
@@ -672,25 +664,23 @@ mod tests {
             data: vec![],
             factor_names: vec![],
         };
-        assert!(matches!(
-            estimate_effects(&empty, &[], 2),
-            Err(DoeError::EmptyDesign {
-                runs: 0,
-                factors: 0
+        assert_eq!(
+            estimate_effects(&empty, &[], 2).map(|e| e.len()),
+            Err(DoeError::EmptyInput {
+                parameter: "design"
             })
-        ));
+        );
 
         let no_factors = DesignMatrix {
             data: vec![vec![], vec![]],
             factor_names: vec![],
         };
-        assert!(matches!(
-            estimate_effects(&no_factors, &[1.0, 2.0], 2),
-            Err(DoeError::EmptyDesign {
-                runs: 2,
-                factors: 0
+        assert_eq!(
+            estimate_effects(&no_factors, &[1.0, 2.0], 2).map(|e| e.len()),
+            Err(DoeError::EmptyInput {
+                parameter: "factor_names"
             })
-        ));
+        );
     }
 
     /// A replicated 2^3, y = 50 + 5A + 3B + C + 2AB. Balanced, the contrast

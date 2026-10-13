@@ -40,7 +40,6 @@ impl From<DoeError> for WireError {
         // the design, that run as `index`).
         let mut fields = serde_json::to_value(&e).expect("DoeError serializes to JSON");
         let (parameter, index) = match &e {
-            DoeError::EmptyDesign { .. } => (Some("design"), None),
             DoeError::DesignShapeMismatch { run, .. } => (Some("design"), Some(*run)),
             DoeError::ResponseCountMismatch { .. } => (Some("responses"), None),
             DoeError::PointDimensionMismatch { .. } => (Some("coded"), None),
@@ -1296,7 +1295,8 @@ fn parse_response_specs(
 /// `parameter`, `index`, `got` and the bounds) if `s1` -- or `s2` for Target --
 /// is not positive (`exclusive_min` 0), or `importance` is negative (`min` 0);
 /// `response_count_mismatch`,
-/// `empty_responses` or `no_weighted_response` for the lists as a whole.
+/// `empty_input` (`parameter: "specs"`) or `no_weighted_response` for the
+/// lists as a whole.
 #[wasm_bindgen(unchecked_return_type = "DesirabilityResultDto")]
 pub fn desirability(
     #[wasm_bindgen(unchecked_param_type = "ResponseSpecInput[]")] specs: JsValue,
@@ -1363,7 +1363,8 @@ enum DesirabilityOptimumDto {
 ///
 /// # Errors
 /// Throws an `Error` carrying `code`: everything `desirability` throws for the
-/// specifications themselves, plus `empty_responses` for no candidates,
+/// specifications themselves, plus `empty_input` (`parameter: "candidates"`)
+/// for no candidates,
 /// `response_count_mismatch` if `candidates.length` is not a multiple of
 /// `specs.length`, and `value_not_finite` (`parameter: "candidates"`, `index`)
 /// for a response that is not finite -- a NaN is not a score, and letting it
@@ -1377,8 +1378,17 @@ pub fn optimize_desirability(
 
     let specs = parse_response_specs(specs)?;
     let candidates = read_numbers(&candidates, "candidates")?;
-    if specs.is_empty() || candidates.is_empty() {
-        return Err(js_err(crate::error::DoeError::EmptyResponses));
+    // `optimize_desirability` refuses these too; here they come first, since
+    // the flat list cannot be split into rows of `specs.len()` without them.
+    if specs.is_empty() {
+        return Err(js_err(crate::error::DoeError::EmptyInput {
+            parameter: "specs",
+        }));
+    }
+    if candidates.is_empty() {
+        return Err(js_err(crate::error::DoeError::EmptyInput {
+            parameter: "candidates",
+        }));
     }
     if candidates.len() % specs.len() != 0 {
         let mut e = WireError::from(crate::error::DoeError::ResponseCountMismatch {
@@ -1700,8 +1710,7 @@ mod path_tests {
     }
 
     /// A refusal about one argument names it, beside the values the library
-    /// reports (C466): the library cannot know the argument's name, the
-    /// binding can.
+    /// reports: the library cannot know the argument's name, the binding can.
     #[test]
     fn a_shape_refusal_names_its_argument() {
         use crate::error::DoeError;
@@ -1720,13 +1729,41 @@ mod path_tests {
             got: 7,
         });
         assert_eq!(e.fields["parameter"], "responses");
-        let e = super::WireError::from(DoeError::EmptyDesign {
-            runs: 0,
-            factors: 2,
-        });
-        assert_eq!(e.fields["parameter"], "design");
         // A variant that names its own parameter keeps it.
         let e = super::WireError::from(DoeError::count_out_of_range("n_center", 1.., 0));
         assert_eq!(e.fields["parameter"], "n_center");
+    }
+
+    /// An empty design and a run short of replicates reach JavaScript under the
+    /// shared reasons, naming the argument -- and, for the run, its position.
+    #[test]
+    fn empty_and_short_inputs_use_the_shared_reasons() {
+        use crate::analysis::taguchi_sn::{signal_to_noise, SnGoal};
+        use crate::design::DesignMatrix;
+        let no_factors = DesignMatrix {
+            data: vec![vec![], vec![]],
+            factor_names: vec![],
+        };
+        let e = super::WireError::from(
+            crate::analysis::rsm::fit_rsm(&no_factors, &[1.0, 2.0]).expect_err("no factors"),
+        );
+        assert_eq!(
+            e.fields,
+            serde_json::json!({ "code": "empty_input", "parameter": "factor_names" })
+        );
+        let e = super::WireError::from(
+            signal_to_noise(&[vec![1.0, 2.0], vec![3.0]], SnGoal::NominalIsBest)
+                .expect_err("run 1 has one replicate"),
+        );
+        assert_eq!(
+            e.fields,
+            serde_json::json!({
+                "code": "insufficient_data",
+                "parameter": "responses",
+                "index": 1,
+                "min": 2,
+                "got": 1,
+            })
+        );
     }
 }
