@@ -34,7 +34,7 @@ const MAX_COMPONENTS: usize = 12;
 /// Largest lattice degree `simplex_lattice` accepts. The run count is
 /// `C(q + m - 1, m)`, which grows past any practical experiment well before
 /// this bound.
-const MAX_DEGREE: usize = 10;
+pub(crate) const MAX_DEGREE: usize = 10;
 
 /// Generate a Simplex Lattice Design {q, m}.
 ///
@@ -69,7 +69,7 @@ pub fn simplex_lattice(q: usize, m: usize) -> Result<DesignMatrix, DoeError> {
             parameter: "m",
             min: 1,
             max: Some(MAX_DEGREE),
-            got: m,
+            got: m as i64,
         });
     }
     let mut rows: Vec<Vec<f64>> = Vec::new();

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** WebAssembly count arguments (`k`, `p`, `q`, `m`, `n_center`,
+  `max_order`, `factor_count`, `n_steps`, `n_replicates`, `model_terms`) tell a value
+  out of range from one that is not a count. A negative count is
+  `parameter_out_of_range` with `parameter`, `got` and the bounds the function checks
+  that count against — the refusal a too-small count gets (`n_center: -1` reports
+  `min: 1`, as `n_center: 0` does; `min: 0` for a count with no lower check) — and a
+  count above 2³² − 1 is `parameter_out_of_range` with that `max`; both were
+  `malformed_input`. A NaN or ±Infinity count is `value_not_finite`, previously
+  `malformed_input`. A fraction stays `malformed_input` ("must be a whole number").
+- **Breaking:** `DoeError::ParameterOutOfRange::got` is `i64` (was `usize`), so the
+  refusal of a negative count can state the value given.
+
 ## [0.19.3] - 2026-10-07
 
 Depends on u-numflow 0.10.

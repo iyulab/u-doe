@@ -216,12 +216,12 @@ try {
 | `code` | Fields | Meaning |
 |---|---|---|
 | `invalid_factor_count` | `min`, `max`, `got` | Factor count outside the generator's range |
-| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `n_center`, `max_order`, the lattice degree `m`, or power's `k`, `p`, `n_replicates`, `model_terms` out of range |
+| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `n_center`, `max_order`, the lattice degree `m`, or power's `k`, `p`, `n_replicates`, `model_terms` out of range; any count argument that is negative (with the bounds that count is checked against, `min: 0` when it has none) or above 2³² − 1 |
 | `unsupported_fraction` | `k`, `p`, `supported` (`[[k, p], ...]`) | 2^(k-p) not in the standard table — see `standard_fractions()` |
 | `unknown_array` | `array`, `supported` | No Taguchi array of that name |
 | `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
-| `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
-| `malformed_input` | `parameter` | An argument of the wrong shape or type, or a JSON string |
+| `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument, a count argument included — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
+| `malformed_input` | `parameter` | An argument of the wrong shape or type, a JSON string, or a count argument with a fraction (`k = 2.5`, "must be a whole number") |
 | `empty_design` | `runs`, `factors`, `parameter` (`"design"`) | No runs or no factors |
 | `design_shape_mismatch` | `run`, `expected`, `got`, `parameter` (`"design"`), `index` (= `run`) | A run whose length differs from the number of factor names |
 | `response_count_mismatch` | `expected`, `got`, `parameter` (`"responses"`, or `"candidates"` for `optimize_desirability`) | Not one response per run (per spec, for `desirability`) |

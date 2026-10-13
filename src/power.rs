@@ -219,7 +219,7 @@ impl Design {
                     parameter: "model_terms",
                     min: 1,
                     max: Some(estimable),
-                    got: terms,
+                    got: terms as i64,
                 })
             }
         };
@@ -257,7 +257,7 @@ fn check_design(k: usize, p: usize) -> Result<(), DoeError> {
             parameter: "p",
             min: 0,
             max: Some(k - 1),
-            got: p,
+            got: p as i64,
         });
     }
     Ok(())
@@ -434,7 +434,7 @@ mod tests {
                     parameter: "model_terms",
                     min: 1,
                     max: Some(7),
-                    got: terms,
+                    got: terms as i64,
                 })
             );
         }

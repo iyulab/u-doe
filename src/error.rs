@@ -17,11 +17,15 @@ pub enum DoeError {
     InvalidFactorCount { min: usize, max: usize, got: usize },
     /// A numeric parameter other than the factor count is outside the range the
     /// function accepts. `max` is `None` when there is no upper bound.
+    ///
+    /// `got` is signed: the functions take counts as `usize`, but a binding
+    /// reads a count as a number, and a negative one is refused with this
+    /// variant -- the same refusal, bounds included, as a count too small.
     ParameterOutOfRange {
         parameter: &'static str,
         min: usize,
         max: Option<usize>,
-        got: usize,
+        got: i64,
     },
     /// The 2^(k-p) fraction is not in the standard generator table. `supported`
     /// lists every `(k, p)` that is.
