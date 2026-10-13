@@ -1,6 +1,6 @@
 [package]
 name = "u-doe"
-version = "0.19.3"
+version = "0.20.0"
 rust-version = "1.85"
 edition = "2021"
 authors = ["iyulab"]
@@ -28,7 +28,7 @@ crate-type = ["cdylib", "rlib"]
 wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde-wasm-bindgen", "dep:serde_json", "dep:serde", "dep:tsify", "dep:serde_path_to_error"]
 
 [dependencies]
-u-numflow = "0.10"
+u-numflow = "0.11"
 serde = { version = "1", features = ["derive"], optional = true }
 # Derives the TypeScript declaration from the same struct serde reads, so the
 # published .d.ts cannot drift from the shape the binding actually returns.
