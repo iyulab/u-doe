@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `codes()` (WebAssembly): every refusal `code` the package throws, with the
+  fields that can come with it -- `{ refusals: [{ code, fields }], violations:
+  [] }`, the shape every engine package shares -- read off one value of each
+  `DoeError` through the conversion a refusal takes, so a caller that
+  translates codes can check its list against the package's.
+
+### Fixed
+
+- The README lists `effect_outside_design` and `invalid_coding_range`, which the
+  package throws, and the `index` a `malformed_input` carries inside an array;
+  a test keeps the table and `codes()` equal.
+
 ## [0.22.0] - 2026-10-14
 
 ### Changed

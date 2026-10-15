@@ -193,6 +193,10 @@ const design = full_factorial(3); // 2^3 = 8 runs
 > directly, not `JSON.stringify(...)` strings. A string argument is rejected with a
 > descriptive error naming the offending parameter.
 
+`codes()` returns every refusal `code` the functions throw, with the fields that
+can come with it — `{ refusals: [{ code, fields }], violations: [] }` — read off
+the crate's refusal type; the table under **Errors** explains each.
+
 ### Errors
 
 Every function throws an `Error` whose `message` is readable text and which
@@ -220,11 +224,13 @@ try {
 | `unknown_array` | `array`, `supported` | No Taguchi array of that name |
 | `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
 | `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument, a count argument or a real setting (`alpha`, `step_size`) included — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
-| `malformed_input` | `parameter` | An argument of the wrong shape or type, a JSON string, or a count argument with a fraction (`k = 2.5`, "must be a whole number") |
+| `malformed_input` | `parameter`, `index` (inside an array) | An argument of the wrong shape or type, a JSON string, or a count argument with a fraction (`k = 2.5`, "must be a whole number") |
 | `empty_input` | `parameter` | An input with nothing in it: `"design"` (no runs), `"factor_names"` (no factors), `"responses"` (`signal_to_noise` with no runs), `"specs"` (`desirability` / `optimize_desirability` with no specs), `"candidates"` (`optimize_desirability` with no candidates) |
 | `insufficient_data` | `parameter`, `min`, `got`, `index` | Fewer values than the calculation needs: `signal_to_noise` with a run of `responses` holding fewer replicate measurements than the goal needs (1, or 2 for `NominalIsBest`) — `index` is that run |
 | `dimension_mismatch` | `parameter`, `expected`, `got`, `index` | Two lengths that must agree do not — `parameter` holds `got` items where `expected` belong: `"design"` (a run with another number of entries than there are factor names; `index` is the run), `"responses"` (not one response per run, or per spec for `desirability`), `"candidates"` (`optimize_desirability`; `index` is the short candidate), `"coded"` (`rsm_predict`; `index` is the short point), `"coefficients"` (`steepest_ascent` / `rsm_predict`: not a full quadratic model in `factor_count` factors) |
 | `unknown_effect` | `effect` | An effect name that is not factor names joined with `":"` |
+| `effect_outside_design` | `effect`, `factors` | An effect that names a factor column the design does not have (`factors` is how many it has) |
+| `invalid_coding_range` | `low`, `high` | A coding range whose low end is not below its high end |
 | `not_two_level_coded` | `run`, `factor`, `value` | An entry other than `-1`/`+1` where the analysis needs two levels |
 | `aliased_effects` | `first`, `second` | Two terms share a contrast column; `second` is `"I"` when `first` is constant (one level left) |
 | `partially_aliased_effects` | `first`, `second` | Two terms' contrasts are correlated; `second` is `"I"` when the runs are unbalanced |

@@ -149,6 +149,88 @@ pub enum DoeError {
 }
 
 impl DoeError {
+    /// One of each reason, every optional value present -- the published
+    /// vocabulary (the WebAssembly `codes()`) reads each code and the fields
+    /// that can come with it off these.
+    #[cfg(feature = "wasm")]
+    pub(crate) fn examples() -> Vec<Self> {
+        use crate::optimization::desirability::GoalType;
+        let s = String::new;
+        vec![
+            DoeError::ParameterOutOfRange {
+                parameter: "",
+                index: Some(0),
+                min: Some(0.0),
+                max: Some(0.0),
+                exclusive_min: Some(0.0),
+                exclusive_max: Some(0.0),
+                got: 0.0,
+            },
+            DoeError::ValueNotFinite {
+                parameter: "",
+                index: Some(0),
+            },
+            DoeError::EmptyInput { parameter: "" },
+            DoeError::InsufficientData {
+                parameter: "",
+                index: Some(0),
+                min: 0,
+                got: 0,
+                counted: "",
+            },
+            DoeError::UnsupportedFraction {
+                k: 0,
+                p: 0,
+                supported: vec![],
+            },
+            DoeError::UnknownArray {
+                array: s(),
+                supported: &[],
+            },
+            DoeError::DimensionMismatch {
+                parameter: "",
+                index: Some(0),
+                expected: 0,
+                got: 0,
+                counted: "",
+            },
+            DoeError::UnknownEffect { effect: s() },
+            DoeError::EffectOutsideDesign {
+                effect: s(),
+                factors: 0,
+            },
+            DoeError::NotTwoLevelCoded {
+                run: 0,
+                factor: 0,
+                value: 0.0,
+            },
+            DoeError::AliasedEffects {
+                first: s(),
+                second: s(),
+            },
+            DoeError::PartiallyAliasedEffects {
+                first: s(),
+                second: s(),
+            },
+            DoeError::OverSpecifiedModel { terms: 0, runs: 0 },
+            DoeError::NoErrorDegreesOfFreedom { terms: 0, runs: 0 },
+            DoeError::SingularModel,
+            DoeError::InvalidCodingRange {
+                low: 0.0,
+                high: 0.0,
+            },
+            DoeError::NonPositiveResponse { run: 0, value: 0.0 },
+            DoeError::InvalidDesirabilityLimits {
+                index: Some(0),
+                goal: GoalType::Maximize,
+                lower: 0.0,
+                target: 0.0,
+                upper: 0.0,
+            },
+            DoeError::NoWeightedResponse,
+        ]
+    }
+
     /// The same error, placed at position `index` of the input list it came
     /// from. Only errors about one element of a list carry an index; others
     /// are returned unchanged.

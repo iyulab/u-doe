@@ -23,6 +23,115 @@ use crate::error::DoeError;
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// The reasons this binding refuses with besides the crate's own
+/// ([`DoeError`]): ones about the shape of a JavaScript argument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WireCode {
+    MalformedInput,
+    ValueNotFinite,
+    UnknownOption,
+}
+
+impl WireCode {
+    const ALL: [WireCode; 3] = [
+        WireCode::MalformedInput,
+        WireCode::ValueNotFinite,
+        WireCode::UnknownOption,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            WireCode::MalformedInput => "malformed_input",
+            WireCode::ValueNotFinite => "value_not_finite",
+            WireCode::UnknownOption => "unknown_option",
+        }
+    }
+
+    /// The fields a refusal with this code can carry besides `code`.
+    fn fields(self) -> &'static [&'static str] {
+        match self {
+            WireCode::MalformedInput | WireCode::ValueNotFinite => &["parameter", "index"],
+            WireCode::UnknownOption => &["parameter", "got", "expected"],
+        }
+    }
+}
+
+/// A refusal reason: the `code` an `Error` carries and the fields that can
+/// stand beside it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, tsify::Tsify)]
+#[serde(deny_unknown_fields)]
+struct RefusalCode {
+    code: String,
+    fields: Vec<String>,
+}
+
+/// A violation a checker reports. This package has no checker; the type is
+/// here so every engine's [`Codes`] has one shape.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, tsify::Tsify)]
+#[serde(deny_unknown_fields)]
+struct ViolationCode {
+    code: String,
+    fields: Vec<String>,
+    checkers: Vec<String>,
+}
+
+/// What this package can answer with besides a result: every refusal
+/// `code`, and no violations -- it has no checker.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, tsify::Tsify)]
+#[serde(deny_unknown_fields)]
+struct Codes {
+    refusals: Vec<RefusalCode>,
+    violations: Vec<ViolationCode>,
+}
+
+/// The vocabulary: each [`DoeError`] as the binding throws it (read off one
+/// of each, through the same conversion a refusal takes) and the binding's
+/// own [`WireCode`]s. A code from both lists once, with the fields of both.
+fn code_catalog() -> Codes {
+    let mut refusals: Vec<RefusalCode> = Vec::new();
+    let mut add =
+        |code: &str, fields: Vec<String>| match refusals.iter_mut().find(|r| r.code == code) {
+            Some(known) => {
+                for f in fields {
+                    if !known.fields.contains(&f) {
+                        known.fields.push(f);
+                    }
+                }
+            }
+            None => refusals.push(RefusalCode {
+                code: code.to_string(),
+                fields,
+            }),
+        };
+    for e in DoeError::examples() {
+        let wire = WireError::from(e);
+        let object = wire.fields.as_object().expect("a refusal is an object");
+        let code = object["code"].as_str().expect("every refusal has a code");
+        add(
+            code,
+            object.keys().filter(|k| *k != "code").cloned().collect(),
+        );
+    }
+    for c in WireCode::ALL {
+        add(c.name(), c.fields().iter().map(|f| f.to_string()).collect());
+    }
+    Codes {
+        refusals,
+        violations: vec![],
+    }
+}
+
+/// Every refusal `code` the functions of this package throw, with the fields
+/// that can come with it: `{ refusals: [{ code, fields }], violations: [] }`.
+///
+/// It is read off the crate's refusal type and the binding's own reasons, so
+/// a caller that translates codes can check its list against the package's.
+#[wasm_bindgen(unchecked_return_type = "Codes")]
+pub fn codes() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&code_catalog())
+        .map_err(|e| js_err(WireError::malformed_input("result", e.to_string())))
+}
+
 /// A refusal on its way to JavaScript: the text for `Error.message`, and the
 /// fields -- `code` first among them -- copied onto the `Error`.
 #[derive(Debug)]
@@ -55,14 +164,14 @@ impl WireError {
     fn malformed_input(parameter: &str, message: String) -> Self {
         WireError {
             message,
-            fields: json!({ "code": "malformed_input", "parameter": parameter }),
+            fields: json!({ "code": WireCode::MalformedInput.name(), "parameter": parameter }),
         }
     }
 
     /// A NaN or ±Infinity where a finite number belongs.
     fn value_not_finite(found: &NonFinite) -> Self {
         let mut fields = found.fields();
-        fields["code"] = json!("value_not_finite");
+        fields["code"] = json!(WireCode::ValueNotFinite.name());
         WireError {
             message: found.message(),
             fields,
@@ -77,7 +186,7 @@ impl WireError {
                 expected.join(", ")
             ),
             fields: json!({
-                "code": "unknown_option",
+                "code": WireCode::UnknownOption.name(),
                 "parameter": parameter,
                 "got": got,
                 "expected": expected,
@@ -310,7 +419,7 @@ fn numbers_from(
             Element::Other(kind) => {
                 return Err(WireError {
                     message: format!("{parameter}[{i}]: expected a number, got {kind}"),
-                    fields: json!({ "code": "malformed_input", "parameter": parameter, "index": i }),
+                    fields: json!({ "code": WireCode::MalformedInput.name(), "parameter": parameter, "index": i }),
                 })
             }
         }
@@ -1762,5 +1871,95 @@ mod path_tests {
                 "got": 1,
             })
         );
+    }
+}
+
+#[cfg(test)]
+mod code_catalog_tests {
+    use super::*;
+
+    /// Every reason has its example: a new variant fails to compile here
+    /// until it has one, so the catalog cannot leave it out.
+    #[test]
+    fn every_reason_has_an_example() {
+        let mut seen = [false; 19];
+        for e in DoeError::examples() {
+            let i = match e {
+                DoeError::ParameterOutOfRange { .. } => 0,
+                DoeError::ValueNotFinite { .. } => 1,
+                DoeError::EmptyInput { .. } => 2,
+                DoeError::InsufficientData { .. } => 3,
+                DoeError::UnsupportedFraction { .. } => 4,
+                DoeError::UnknownArray { .. } => 5,
+                DoeError::DimensionMismatch { .. } => 6,
+                DoeError::UnknownEffect { .. } => 7,
+                DoeError::EffectOutsideDesign { .. } => 8,
+                DoeError::NotTwoLevelCoded { .. } => 9,
+                DoeError::AliasedEffects { .. } => 10,
+                DoeError::PartiallyAliasedEffects { .. } => 11,
+                DoeError::OverSpecifiedModel { .. } => 12,
+                DoeError::NoErrorDegreesOfFreedom { .. } => 13,
+                DoeError::SingularModel => 14,
+                DoeError::InvalidCodingRange { .. } => 15,
+                DoeError::NonPositiveResponse { .. } => 16,
+                DoeError::InvalidDesirabilityLimits { .. } => 17,
+                DoeError::NoWeightedResponse => 18,
+            };
+            assert!(!seen[i], "two examples of reason {i}");
+            seen[i] = true;
+        }
+        assert!(seen.iter().all(|s| *s), "a reason without an example");
+        let catalog = code_catalog();
+        // `value_not_finite` comes from both lists, once.
+        assert_eq!(
+            catalog
+                .refusals
+                .iter()
+                .filter(|r| r.code == "value_not_finite")
+                .count(),
+            1
+        );
+        let limits = catalog
+            .refusals
+            .iter()
+            .find(|r| r.code == "invalid_desirability_limits")
+            .expect("listed");
+        assert!(
+            limits.fields.contains(&"parameter".to_string()),
+            "{limits:?}"
+        );
+    }
+
+    /// The README's code tables list exactly the published vocabulary, so the
+    /// tables and `codes()` cannot drift apart.
+    #[test]
+    fn the_readme_documents_every_code_and_no_other() {
+        let readme = include_str!("../README.md");
+        let mut documented = std::collections::BTreeSet::new();
+        let mut in_table = false;
+        for line in readme.lines() {
+            if line.starts_with("| `code` |") {
+                in_table = true;
+                continue;
+            }
+            if !line.starts_with('|') {
+                in_table = false;
+                continue;
+            }
+            if in_table && !line.starts_with("|---") {
+                let first = line.split('|').nth(1).expect("a cell");
+                for code in first.split('·') {
+                    documented.insert(code.trim().trim_matches('`').to_string());
+                }
+            }
+        }
+        let catalog = code_catalog();
+        let published: std::collections::BTreeSet<String> = catalog
+            .refusals
+            .iter()
+            .map(|r| r.code.clone())
+            .chain(catalog.violations.iter().map(|v| v.code.clone()))
+            .collect();
+        assert_eq!(documented, published);
     }
 }
