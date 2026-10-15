@@ -240,6 +240,7 @@ try {
 | `non_positive_response` | `run`, `value` | `signal_to_noise` `LargerIsBetter`: a response ≤ 0 |
 | `invalid_desirability_limits` | `index`, `goal`, `lower`, `target`, `upper`, `parameter` (`"specs"`) | A spec whose ramp has no width or runs backwards (see `desirability`) |
 | `no_weighted_response` | — | Every spec has `importance` 0 |
+| `internal` | — | A result the package could not hand back — a fault in the package, not in the input; please report it |
 
 A field that has no value is `null` in results too (`curvature`, `pure_error`,
 `lenth`, `p_value`), never a missing key.

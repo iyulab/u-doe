@@ -30,13 +30,16 @@ enum WireCode {
     MalformedInput,
     ValueNotFinite,
     UnknownOption,
+    /// The package failed, not the input.
+    Internal,
 }
 
 impl WireCode {
-    const ALL: [WireCode; 3] = [
+    const ALL: [WireCode; 4] = [
         WireCode::MalformedInput,
         WireCode::ValueNotFinite,
         WireCode::UnknownOption,
+        WireCode::Internal,
     ];
 
     fn name(self) -> &'static str {
@@ -44,6 +47,7 @@ impl WireCode {
             WireCode::MalformedInput => "malformed_input",
             WireCode::ValueNotFinite => "value_not_finite",
             WireCode::UnknownOption => "unknown_option",
+            WireCode::Internal => "internal",
         }
     }
 
@@ -52,6 +56,7 @@ impl WireCode {
         match self {
             WireCode::MalformedInput | WireCode::ValueNotFinite => &["parameter", "index"],
             WireCode::UnknownOption => &["parameter", "got", "expected"],
+            WireCode::Internal => &[],
         }
     }
 }
@@ -129,7 +134,7 @@ fn code_catalog() -> Codes {
 #[wasm_bindgen(unchecked_return_type = "Codes")]
 pub fn codes() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(&code_catalog())
-        .map_err(|e| js_err(WireError::malformed_input("result", e.to_string())))
+        .map_err(|e| js_err(WireError::internal(e.to_string())))
 }
 
 /// A refusal on its way to JavaScript: the text for `Error.message`, and the
@@ -165,6 +170,14 @@ impl WireError {
         WireError {
             message,
             fields: json!({ "code": WireCode::MalformedInput.name(), "parameter": parameter }),
+        }
+    }
+
+    /// The package failed, not the input: a result it could not hand back.
+    fn internal(message: String) -> Self {
+        WireError {
+            message,
+            fields: json!({ "code": WireCode::Internal.name() }),
         }
     }
 
@@ -221,7 +234,7 @@ fn js_err(error: impl Into<WireError>) -> JsValue {
 fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
     value
         .serialize(&serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true))
-        .map_err(|e| js_err(WireError::malformed_input("result", e.to_string())))
+        .map_err(|e| js_err(WireError::internal(e.to_string())))
 }
 
 /// A NaN or ±Infinity found in a JS argument, and where it sits.

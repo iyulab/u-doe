@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A result the package fails to hand back to JavaScript is refused as
+  `internal`, not as `malformed_input` with `parameter: "result"` — the fault
+  is the package's, not the caller's input. `internal` joins the refusal codes
+  (`codes()`, the README table).
+
 ## [0.23.0] - 2026-10-16
 
 ### Added
