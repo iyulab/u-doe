@@ -136,7 +136,7 @@ impl ResponseSpec {
     /// Create a "larger-is-better" specification.
     ///
     /// d = 0 for y < lower; d = 1 for y ≥ target; a ramp with exponent `s` in
-    /// between. `upper` is not used.
+    /// between.
     ///
     /// # Errors
     /// As [`ResponseSpec::new`].
@@ -145,17 +145,17 @@ impl ResponseSpec {
     ///
     /// ```
     /// use u_doe::optimization::desirability::ResponseSpec;
-    /// let spec = ResponseSpec::maximize(50.0, 100.0, 100.0, 1.0).unwrap();
+    /// let spec = ResponseSpec::maximize(50.0, 100.0, 1.0).unwrap();
     /// assert!((spec.desirability(75.0) - 0.5).abs() < 1e-9);
     /// ```
-    pub fn maximize(lower: f64, target: f64, upper: f64, s: f64) -> Result<Self, DoeError> {
-        Self::new(GoalType::Maximize, lower, target, upper, s, s)
+    pub fn maximize(lower: f64, target: f64, s: f64) -> Result<Self, DoeError> {
+        Self::new(GoalType::Maximize, lower, target, target, s, s)
     }
 
     /// Create a "smaller-is-better" specification.
     ///
     /// d = 1 for y ≤ target; d = 0 for y > upper; a ramp with exponent `s` in
-    /// between. `lower` is not used.
+    /// between.
     ///
     /// # Errors
     /// As [`ResponseSpec::new`].
@@ -164,11 +164,11 @@ impl ResponseSpec {
     ///
     /// ```
     /// use u_doe::optimization::desirability::ResponseSpec;
-    /// let spec = ResponseSpec::minimize(0.0, 0.0, 50.0, 1.0).unwrap();
+    /// let spec = ResponseSpec::minimize(0.0, 50.0, 1.0).unwrap();
     /// assert!((spec.desirability(25.0) - 0.5).abs() < 1e-9);
     /// ```
-    pub fn minimize(lower: f64, target: f64, upper: f64, s: f64) -> Result<Self, DoeError> {
-        Self::new(GoalType::Minimize, lower, target, upper, s, s)
+    pub fn minimize(target: f64, upper: f64, s: f64) -> Result<Self, DoeError> {
+        Self::new(GoalType::Minimize, target, target, upper, s, s)
     }
 
     /// Create a "hit-a-target" specification.
@@ -202,7 +202,7 @@ impl ResponseSpec {
     ///
     /// ```
     /// use u_doe::optimization::desirability::ResponseSpec;
-    /// let spec = ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0)
+    /// let spec = ResponseSpec::maximize(0.0, 100.0, 1.0)
     ///     .and_then(|s| s.with_importance(3.0))
     ///     .unwrap();
     /// assert!((spec.importance() - 3.0).abs() < 1e-12);
@@ -218,9 +218,9 @@ impl ResponseSpec {
         self.goal
     }
 
-    /// Lower acceptability limit (L).
-    pub fn lower(&self) -> f64 {
-        self.lower
+    /// Lower acceptability limit (L); `None` for `Minimize`, which has none.
+    pub fn lower(&self) -> Option<f64> {
+        (self.goal != GoalType::Minimize).then_some(self.lower)
     }
 
     /// Target value (T).
@@ -228,9 +228,9 @@ impl ResponseSpec {
         self.target
     }
 
-    /// Upper acceptability limit (U).
-    pub fn upper(&self) -> f64 {
-        self.upper
+    /// Upper acceptability limit (U); `None` for `Maximize`, which has none.
+    pub fn upper(&self) -> Option<f64> {
+        (self.goal != GoalType::Maximize).then_some(self.upper)
     }
 
     /// Exponent of the rising ramp (the falling one for `Minimize`).
@@ -238,9 +238,10 @@ impl ResponseSpec {
         self.s1
     }
 
-    /// Exponent of `Target`'s falling ramp.
-    pub fn s2(&self) -> f64 {
-        self.s2
+    /// Exponent of the falling ramp of `Target`; `None` for the other goals,
+    /// which have one ramp.
+    pub fn s2(&self) -> Option<f64> {
+        (self.goal == GoalType::Target).then_some(self.s2)
     }
 
     /// Relative importance weight rᵢ.
@@ -301,8 +302,8 @@ impl ResponseSpec {
 /// ```
 /// use u_doe::optimization::desirability::{ResponseSpec, overall_desirability};
 /// let specs = vec![
-///     ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0).unwrap(),
-///     ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0).unwrap(),
+///     ResponseSpec::maximize(0.0, 100.0, 1.0).unwrap(),
+///     ResponseSpec::maximize(0.0, 100.0, 1.0).unwrap(),
 /// ];
 /// let d = overall_desirability(&specs, &[100.0, 100.0]).unwrap();
 /// assert!((d - 1.0).abs() < 1e-10);
@@ -401,12 +402,12 @@ pub enum DesirabilityOptimum {
 /// };
 ///
 /// // Yield to maximise over [0, 100]; the third candidate is the best of three.
-/// let specs = vec![ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0).unwrap()];
+/// let specs = vec![ResponseSpec::maximize(0.0, 100.0, 1.0).unwrap()];
 /// let found = optimize_desirability(&specs, &[vec![10.0], vec![50.0], vec![90.0]]).unwrap();
 /// assert!(matches!(found, DesirabilityOptimum::Best { index: 2, .. }));
 ///
 /// // The same candidates against a target no one reaches: not an optimum.
-/// let specs = vec![ResponseSpec::maximize(200.0, 300.0, 300.0, 1.0).unwrap()];
+/// let specs = vec![ResponseSpec::maximize(200.0, 300.0, 1.0).unwrap()];
 /// let found = optimize_desirability(&specs, &[vec![10.0], vec![50.0], vec![90.0]]).unwrap();
 /// assert_eq!(found, DesirabilityOptimum::Infeasible { unreachable: vec![0] });
 /// ```
@@ -493,7 +494,7 @@ mod tests {
     /// 0 and calls it optimal; this says which response is the reason.
     #[test]
     fn a_response_that_is_never_met_is_named_rather_than_averaged_away() {
-        let specs = vec![ResponseSpec::maximize(200.0, 300.0, 300.0, 1.0).expect("ordered")];
+        let specs = vec![ResponseSpec::maximize(200.0, 300.0, 1.0).expect("ordered")];
         let candidates = vec![vec![10.0], vec![50.0], vec![90.0]];
         for c in &candidates {
             assert_eq!(overall_desirability(&specs, c).expect("valid"), 0.0);
@@ -512,8 +513,8 @@ mod tests {
     #[test]
     fn responses_met_apart_but_never_together_name_no_single_reason() {
         let specs = vec![
-            ResponseSpec::maximize(60.0, 95.0, 95.0, 1.0).expect("ordered"),
-            ResponseSpec::minimize(4.0, 4.0, 8.0, 1.0).expect("ordered"),
+            ResponseSpec::maximize(60.0, 95.0, 1.0).expect("ordered"),
+            ResponseSpec::minimize(4.0, 8.0, 1.0).expect("ordered"),
         ];
         // Yield meets its limits only at run 3, Cost only at run 1.
         let candidates = vec![vec![10.0, 5.0], vec![50.0, 10.0], vec![90.0, 15.0]];
@@ -527,7 +528,7 @@ mod tests {
 
     #[test]
     fn the_best_candidate_is_the_first_strictly_best_one() {
-        let specs = vec![ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0).expect("ordered")];
+        let specs = vec![ResponseSpec::maximize(0.0, 100.0, 1.0).expect("ordered")];
         let candidates = vec![vec![10.0], vec![90.0], vec![90.0], vec![50.0]];
         let found = optimize_desirability(&specs, &candidates).expect("valid");
         match found {
@@ -549,11 +550,11 @@ mod tests {
     #[test]
     fn a_response_with_no_importance_is_never_the_reason() {
         let specs = vec![
-            ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0)
+            ResponseSpec::maximize(0.0, 100.0, 1.0)
                 .expect("ordered")
                 .with_importance(1.0)
                 .expect("positive"),
-            ResponseSpec::maximize(200.0, 300.0, 300.0, 1.0)
+            ResponseSpec::maximize(200.0, 300.0, 1.0)
                 .expect("ordered")
                 .with_importance(0.0)
                 .expect("zero is allowed"),
@@ -568,8 +569,8 @@ mod tests {
 
         // And when nothing scores, it is still not named.
         let specs = vec![
-            ResponseSpec::maximize(200.0, 300.0, 300.0, 1.0).expect("ordered"),
-            ResponseSpec::maximize(200.0, 300.0, 300.0, 1.0)
+            ResponseSpec::maximize(200.0, 300.0, 1.0).expect("ordered"),
+            ResponseSpec::maximize(200.0, 300.0, 1.0)
                 .expect("ordered")
                 .with_importance(0.0)
                 .expect("zero is allowed"),
@@ -584,7 +585,7 @@ mod tests {
 
     #[test]
     fn the_search_refuses_what_it_cannot_score() {
-        let specs = vec![ResponseSpec::maximize(0.0, 100.0, 100.0, 1.0).expect("ordered")];
+        let specs = vec![ResponseSpec::maximize(0.0, 100.0, 1.0).expect("ordered")];
         assert!(matches!(
             optimize_desirability(&specs, &[]),
             Err(DoeError::EmptyInput {
@@ -617,12 +618,12 @@ mod tests {
         }
     }
 
-    fn maximize(lower: f64, target: f64, upper: f64, s: f64) -> ResponseSpec {
-        ResponseSpec::maximize(lower, target, upper, s).expect("valid maximize spec")
+    fn maximize(lower: f64, target: f64, s: f64) -> ResponseSpec {
+        ResponseSpec::maximize(lower, target, s).expect("valid maximize spec")
     }
 
-    fn minimize(lower: f64, target: f64, upper: f64, s: f64) -> ResponseSpec {
-        ResponseSpec::minimize(lower, target, upper, s).expect("valid minimize spec")
+    fn minimize(target: f64, upper: f64, s: f64) -> ResponseSpec {
+        ResponseSpec::minimize(target, upper, s).expect("valid minimize spec")
     }
 
     fn target(lower: f64, t: f64, upper: f64, s1: f64, s2: f64) -> ResponseSpec {
@@ -631,32 +632,32 @@ mod tests {
 
     #[test]
     fn maximize_at_target_is_one() {
-        let spec = maximize(50.0, 100.0, 100.0, 1.0);
+        let spec = maximize(50.0, 100.0, 1.0);
         assert!((spec.desirability(100.0) - 1.0).abs() < 1e-10);
     }
 
     #[test]
     fn maximize_below_lower_is_zero() {
-        let spec = maximize(50.0, 100.0, 100.0, 1.0);
+        let spec = maximize(50.0, 100.0, 1.0);
         assert!(spec.desirability(49.9).abs() < 1e-10);
     }
 
     #[test]
     fn maximize_midpoint_linear() {
         // s=1, linear: d(75) = (75-50)/(100-50) = 0.5
-        let spec = maximize(50.0, 100.0, 100.0, 1.0);
+        let spec = maximize(50.0, 100.0, 1.0);
         assert!((spec.desirability(75.0) - 0.5).abs() < 1e-9);
     }
 
     #[test]
     fn minimize_at_target_is_one() {
-        let spec = minimize(0.0, 0.0, 50.0, 1.0);
+        let spec = minimize(0.0, 50.0, 1.0);
         assert!((spec.desirability(0.0) - 1.0).abs() < 1e-10);
     }
 
     #[test]
     fn minimize_above_upper_is_zero() {
-        let spec = minimize(0.0, 0.0, 50.0, 1.0);
+        let spec = minimize(0.0, 50.0, 1.0);
         assert!(spec.desirability(50.1).abs() < 1e-10);
     }
 
@@ -694,10 +695,7 @@ mod tests {
 
     #[test]
     fn overall_geometric_mean() {
-        let specs = vec![
-            maximize(0.0, 100.0, 100.0, 1.0),
-            maximize(0.0, 100.0, 100.0, 1.0),
-        ];
+        let specs = vec![maximize(0.0, 100.0, 1.0), maximize(0.0, 100.0, 1.0)];
         // d1=0.5 (at 50), d2=1.0 (at 100) → D = (0.5 * 1.0)^(1/2) = sqrt(0.5) ≈ 0.707
         let d = overall_desirability(&specs, &[50.0, 100.0]).unwrap();
         assert!((d - 0.5_f64.sqrt()).abs() < 1e-9);
@@ -705,10 +703,7 @@ mod tests {
 
     #[test]
     fn overall_zero_if_any_zero() {
-        let specs = vec![
-            maximize(50.0, 100.0, 100.0, 1.0),
-            maximize(50.0, 100.0, 100.0, 1.0),
-        ];
+        let specs = vec![maximize(50.0, 100.0, 1.0), maximize(50.0, 100.0, 1.0)];
         // Second response below L → d=0 → D=0
         let d = overall_desirability(&specs, &[80.0, 10.0]).unwrap();
         assert!(d.abs() < 1e-10);
@@ -717,7 +712,7 @@ mod tests {
     #[test]
     fn desirability_weight_s2_convex() {
         // s=2 (convex): d(75) = ((75-50)/50)^2 = 0.25
-        let spec = maximize(50.0, 100.0, 100.0, 2.0);
+        let spec = maximize(50.0, 100.0, 2.0);
         assert!((spec.desirability(75.0) - 0.25).abs() < 1e-9);
     }
 
@@ -725,10 +720,7 @@ mod tests {
 
     #[test]
     fn default_importance_is_one() {
-        let specs = vec![
-            maximize(0.0, 100.0, 100.0, 1.0),
-            maximize(0.0, 100.0, 100.0, 1.0),
-        ];
+        let specs = vec![maximize(0.0, 100.0, 1.0), maximize(0.0, 100.0, 1.0)];
         assert!((specs[0].importance() - 1.0).abs() < 1e-12);
         let d = overall_desirability(&specs, &[50.0, 100.0]).unwrap();
         assert!((d - 0.5_f64.sqrt()).abs() < 1e-9, "D = {d}");
@@ -738,10 +730,8 @@ mod tests {
     fn equal_desirabilities_give_that_value_regardless_of_weights() {
         // Both dᵢ = 0.5; any positive weights → weighted geometric mean = 0.5.
         let specs = vec![
-            maximize(0.0, 10.0, 10.0, 1.0)
-                .with_importance(10.0)
-                .unwrap(),
-            maximize(0.0, 10.0, 10.0, 1.0).with_importance(1.0).unwrap(),
+            maximize(0.0, 10.0, 1.0).with_importance(10.0).unwrap(),
+            maximize(0.0, 10.0, 1.0).with_importance(1.0).unwrap(),
         ];
         let d = overall_desirability(&specs, &[5.0, 5.0]).unwrap();
         assert!((d - 0.5).abs() < 1e-9, "equal d's must give 0.5, got {d}");
@@ -750,7 +740,7 @@ mod tests {
     #[test]
     fn higher_importance_pulls_overall_toward_that_response() {
         // d1 = 0.25 (weighted heavily), d2 = 1.0. As r1 grows, D → 0.25.
-        let base = maximize(0.0, 100.0, 100.0, 1.0);
+        let base = maximize(0.0, 100.0, 1.0);
         let make = |r1: f64| {
             vec![
                 base.clone().with_importance(r1).unwrap(),
@@ -771,12 +761,8 @@ mod tests {
     #[test]
     fn zero_desirability_still_vetoes_with_weights() {
         let specs = vec![
-            maximize(50.0, 100.0, 100.0, 1.0)
-                .with_importance(5.0)
-                .unwrap(),
-            maximize(50.0, 100.0, 100.0, 1.0)
-                .with_importance(1.0)
-                .unwrap(),
+            maximize(50.0, 100.0, 1.0).with_importance(5.0).unwrap(),
+            maximize(50.0, 100.0, 1.0).with_importance(1.0).unwrap(),
         ];
         let d = overall_desirability(&specs, &[80.0, 10.0]).unwrap(); // second → d=0
         assert!(
@@ -788,10 +774,8 @@ mod tests {
     #[test]
     fn zero_importance_leaves_a_response_out() {
         let specs = vec![
-            maximize(50.0, 100.0, 100.0, 1.0),
-            maximize(50.0, 100.0, 100.0, 1.0)
-                .with_importance(0.0)
-                .unwrap(),
+            maximize(50.0, 100.0, 1.0),
+            maximize(50.0, 100.0, 1.0).with_importance(0.0).unwrap(),
         ];
         // The second response is below L (d = 0) but carries no weight.
         let d = overall_desirability(&specs, &[75.0, 10.0]).unwrap();
@@ -828,8 +812,8 @@ mod tests {
     #[test]
     fn a_limit_the_goal_does_not_use_is_not_examined() {
         // Maximize reads L and T; Minimize reads T and U.
-        assert!(ResponseSpec::maximize(0.0, 10.0, -5.0, 1.0).is_ok());
-        assert!(ResponseSpec::minimize(99.0, 0.0, 10.0, 1.0).is_ok());
+        assert!(ResponseSpec::maximize(0.0, 10.0, 1.0).is_ok());
+        assert!(ResponseSpec::minimize(0.0, 10.0, 1.0).is_ok());
         // Nor is the exponent it does not use.
         assert!(ResponseSpec::new(GoalType::Maximize, 0.0, 10.0, 10.0, 1.0, 0.0).is_ok());
     }
@@ -847,7 +831,7 @@ mod tests {
         };
         for s in [0.0, -1.0] {
             assert_eq!(
-                ResponseSpec::maximize(0.0, 10.0, 10.0, s).map(|_| ()),
+                ResponseSpec::maximize(0.0, 10.0, s).map(|_| ()),
                 Err(positive("s1", s))
             );
             assert_eq!(
@@ -861,7 +845,7 @@ mod tests {
         };
         for s in [f64::INFINITY, f64::NAN] {
             assert_eq!(
-                ResponseSpec::maximize(0.0, 10.0, 10.0, s).map(|_| ()),
+                ResponseSpec::maximize(0.0, 10.0, s).map(|_| ()),
                 Err(not_finite("s1"))
             );
             assert_eq!(
@@ -870,9 +854,7 @@ mod tests {
             );
         }
         assert_eq!(
-            maximize(0.0, 10.0, 10.0, 1.0)
-                .with_importance(-1.0)
-                .map(|_| ()),
+            maximize(0.0, 10.0, 1.0).with_importance(-1.0).map(|_| ()),
             Err(DoeError::ParameterOutOfRange {
                 parameter: "importance",
                 index: None,
@@ -885,9 +867,7 @@ mod tests {
         );
         for r in [f64::INFINITY, f64::NAN] {
             assert_eq!(
-                maximize(0.0, 10.0, 10.0, 1.0)
-                    .with_importance(r)
-                    .map(|_| ()),
+                maximize(0.0, 10.0, 1.0).with_importance(r).map(|_| ()),
                 Err(not_finite("importance"))
             );
         }
@@ -895,7 +875,7 @@ mod tests {
 
     #[test]
     fn overall_refuses_what_it_cannot_combine() {
-        let spec = maximize(0.0, 10.0, 10.0, 1.0);
+        let spec = maximize(0.0, 10.0, 1.0);
         assert_eq!(
             overall_desirability(&[], &[]),
             Err(DoeError::EmptyInput { parameter: "specs" })

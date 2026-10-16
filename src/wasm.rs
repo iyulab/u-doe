@@ -30,15 +30,18 @@ enum WireCode {
     MalformedInput,
     ValueNotFinite,
     UnknownOption,
+    /// A setting the request's other choices do not read.
+    InvalidOption,
     /// The package failed, not the input.
     Internal,
 }
 
 impl WireCode {
-    const ALL: [WireCode; 4] = [
+    const ALL: [WireCode; 5] = [
         WireCode::MalformedInput,
         WireCode::ValueNotFinite,
         WireCode::UnknownOption,
+        WireCode::InvalidOption,
         WireCode::Internal,
     ];
 
@@ -47,6 +50,7 @@ impl WireCode {
             WireCode::MalformedInput => "malformed_input",
             WireCode::ValueNotFinite => "value_not_finite",
             WireCode::UnknownOption => "unknown_option",
+            WireCode::InvalidOption => "invalid_option",
             WireCode::Internal => "internal",
         }
     }
@@ -56,6 +60,7 @@ impl WireCode {
         match self {
             WireCode::MalformedInput | WireCode::ValueNotFinite => &["parameter", "index"],
             WireCode::UnknownOption => &["parameter", "got", "expected"],
+            WireCode::InvalidOption => &["parameter", "index"],
             WireCode::Internal => &[],
         }
     }
@@ -170,6 +175,16 @@ impl WireError {
         WireError {
             message,
             fields: json!({ "code": WireCode::MalformedInput.name(), "parameter": parameter }),
+        }
+    }
+
+    /// A desirability spec's field, refused at `parameter` and the spec's
+    /// position: one its goal needs and lacks (`malformed_input`), or one its
+    /// goal does not read (`invalid_option`).
+    fn spec_field(code: WireCode, parameter: &str, index: usize, message: String) -> Self {
+        WireError {
+            message,
+            fields: json!({ "code": code.name(), "parameter": parameter, "index": index }),
         }
     }
 
@@ -1323,16 +1338,27 @@ fn default_importance() -> f64 {
 /// One response's desirability specification, as `desirability` and
 /// `optimize_desirability` read it. Declared for TypeScript so a misspelt
 /// field or goal fails to compile rather than at the boundary.
+///
+/// Each goal takes the limits and exponents its curve has: `Maximize`
+/// `lower`, `target`, `s1`; `Minimize` `target`, `upper`, `s1`; `Target` all
+/// five. A field the goal does not read is refused (`invalid_option`), not
+/// ignored -- it used to be required and then ignored.
 #[derive(serde::Deserialize, tsify::Tsify)]
 #[serde(deny_unknown_fields)]
 struct ResponseSpecInput {
     #[tsify(type = "\"Maximize\" | \"Minimize\" | \"Target\"")]
     goal: String,
-    lower: f64,
+    #[serde(default)]
+    #[tsify(optional, type = "number")]
+    lower: Option<f64>,
     target: f64,
-    upper: f64,
+    #[serde(default)]
+    #[tsify(optional, type = "number")]
+    upper: Option<f64>,
     s1: f64,
-    s2: f64,
+    #[serde(default)]
+    #[tsify(optional, type = "number")]
+    s2: Option<f64>,
     /// Relative importance weight rᵢ (Derringer-Suich). Optional; defaults to 1.0.
     #[serde(default = "default_importance")]
     #[tsify(optional)]
@@ -1372,16 +1398,56 @@ fn parse_response_specs(
                     )))
                 }
             };
-            ResponseSpec::new(
-                goal,
-                input.lower,
-                input.target,
-                input.upper,
-                input.s1,
-                input.s2,
-            )
-            .and_then(|spec| spec.with_importance(input.importance))
-            .map_err(|e| js_err(e.at_index(index)))
+            // The fields this goal's curve has: each one present, every
+            // other one absent.
+            let (lower, upper, s2) = (input.lower, input.upper, input.s2);
+            let reads = |field: &str| match goal {
+                GoalType::Maximize => field == "lower",
+                GoalType::Minimize => field == "upper",
+                GoalType::Target => true,
+            };
+            for (field, value) in [("lower", lower), ("upper", upper), ("s2", s2)] {
+                let wanted = reads(field) || (field == "s2" && goal == GoalType::Target);
+                match (wanted, value) {
+                    (true, None) => {
+                        return Err(js_err(WireError::spec_field(
+                            WireCode::MalformedInput,
+                            field,
+                            index,
+                            format!("specs[{index}]: {} needs `{field}`", input.goal),
+                        )))
+                    }
+                    (false, Some(_)) => {
+                        return Err(js_err(WireError::spec_field(
+                            WireCode::InvalidOption,
+                            field,
+                            index,
+                            format!(
+                                "specs[{index}]: {} does not read `{field}` -- leave it out",
+                                input.goal
+                            ),
+                        )))
+                    }
+                    _ => {}
+                }
+            }
+            let spec = match goal {
+                GoalType::Maximize => {
+                    ResponseSpec::maximize(lower.unwrap_or_default(), input.target, input.s1)
+                }
+                GoalType::Minimize => {
+                    ResponseSpec::minimize(input.target, upper.unwrap_or_default(), input.s1)
+                }
+                GoalType::Target => ResponseSpec::target(
+                    lower.unwrap_or_default(),
+                    input.target,
+                    upper.unwrap_or_default(),
+                    input.s1,
+                    s2.unwrap_or_default(),
+                ),
+            };
+            spec.and_then(|spec| spec.with_importance(input.importance))
+                .map_err(|e| js_err(e.at_index(index)))
         })
         .collect()
 }

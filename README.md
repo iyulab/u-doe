@@ -68,8 +68,8 @@ assert_eq!(path.len(), 5);
 use u_doe::optimization::desirability::{ResponseSpec, overall_desirability};
 
 let specs = vec![
-    ResponseSpec::maximize(50.0, 100.0, 100.0, 1.0).unwrap(),
-    ResponseSpec::minimize(0.0, 0.0, 30.0, 1.0).unwrap(),
+    ResponseSpec::maximize(50.0, 100.0, 1.0).unwrap(),
+    ResponseSpec::minimize(0.0, 30.0, 1.0).unwrap(),
 ];
 let d = overall_desirability(&specs, &[80.0, 10.0]).unwrap();
 println!("Overall desirability: {d:.3}");
@@ -223,8 +223,9 @@ try {
 | `unsupported_fraction` | `k`, `p`, `supported` (`[[k, p], ...]`) | 2^(k-p) not in the standard table — see `standard_fractions()` |
 | `unknown_array` | `array`, `supported` | No Taguchi array of that name |
 | `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
+| `invalid_option` | `parameter`, `index` | A desirability spec field its `goal` does not read (`s2` or `upper` for `Maximize`, `s2` or `lower` for `Minimize`) — `index` is the spec's position |
 | `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument, a count argument or a real setting (`alpha`, `step_size`) included — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
-| `malformed_input` | `parameter`, `index` (inside an array) | An argument of the wrong shape or type, a JSON string, or a count argument with a fraction (`k = 2.5`, "must be a whole number") |
+| `malformed_input` | `parameter`, `index` (inside an array) | An argument of the wrong shape or type, a JSON string, a count argument with a fraction (`k = 2.5`, "must be a whole number"), or a desirability spec without a field its `goal` needs (`index` is the spec's position) |
 | `empty_input` | `parameter` | An input with nothing in it: `"design"` (no runs), `"factor_names"` (no factors), `"responses"` (`signal_to_noise` with no runs), `"specs"` (`desirability` / `optimize_desirability` with no specs), `"candidates"` (`optimize_desirability` with no candidates) |
 | `insufficient_data` | `parameter`, `min`, `got`, `index` | Fewer values than the calculation needs: `signal_to_noise` with a run of `responses` holding fewer replicate measurements than the goal needs (1, or 2 for `NominalIsBest`) — `index` is that run |
 | `dimension_mismatch` | `parameter`, `expected`, `got`, `index` | Two lengths that must agree do not — `parameter` holds `got` items where `expected` belong: `"design"` (a run with another number of entries than there are factor names; `index` is the run), `"responses"` (not one response per run, or per spec for `desirability`), `"candidates"` (`optimize_desirability`; `index` is the short candidate), `"coded"` (`rsm_predict`; `index` is the short point), `"coefficients"` (`steepest_ascent` / `rsm_predict`: not a full quadratic model in `factor_count` factors) |
@@ -461,7 +462,13 @@ Compute the steepest ascent path from a fitted RSM model.
 
 Compute Derringer-Suich desirability for multiple responses.
 
-**Input:** `specs`: `[{ "goal": "Maximize"|"Minimize"|"Target", "lower": 0, "target": 100, "upper": 100, "s1": 1, "s2": 1, "importance": 1 }]`, `responses`: `number[]` or `Float64Array`
+**Input:** `specs`: `[{ "goal": "Maximize"|"Minimize"|"Target", "lower": 0, "target": 100, "s1": 1, "importance": 1 }]`, `responses`: `number[]` or `Float64Array`
+
+Each goal takes the limits and exponents its curve has: `Maximize` — `lower`,
+`target`, `s1`; `Minimize` — `target`, `upper`, `s1`; `Target` — `lower`,
+`target`, `upper`, `s1` (left ramp), `s2` (right ramp). A field the goal does
+not read is refused (`invalid_option`, with `parameter` and `index`) rather than
+ignored, and a missing one is `malformed_input`.
 
 `s1`/`s2` are curve-shape exponents (`s = 1` linear, `> 1` convex/stricter, `< 1` concave). `importance` (optional, default `1`) is the Derringer-Suich response weight rᵢ — it is **distinct from** the shape exponents: raise `importance` to make a response count more in the aggregate, not to reshape its curve.
 
@@ -481,14 +488,14 @@ candidate, each in specification order.
 ```js
 // Yield to maximise over [0, 100]; the third candidate wins.
 optimize_desirability(
-  [{ goal: "Maximize", lower: 0, target: 100, upper: 100, s1: 1, s2: 1 }],
+  [{ goal: "Maximize", lower: 0, target: 100, s1: 1 }],
   Float64Array.from([10, 50, 90]),
 )
 // -> { kind: "best", index: 2, overall: 0.9, individual: [0.9] }
 
 // The same candidates against a target none of them reaches.
 optimize_desirability(
-  [{ goal: "Maximize", lower: 200, target: 300, upper: 300, s1: 1, s2: 1 }],
+  [{ goal: "Maximize", lower: 200, target: 300, s1: 1 }],
   Float64Array.from([10, 50, 90]),
 )
 // -> { kind: "infeasible", unreachable: [0] }

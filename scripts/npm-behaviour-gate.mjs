@@ -48,9 +48,14 @@ const table = m.standard_fractions()
 ok(e.code === 'unsupported_fraction' && JSON.stringify(e.supported) === JSON.stringify(table.map((t) => [t.k, t.p])),
   'unsupported_fraction must list the table standard_fractions() returns')
 
-const spec = (goal, lower, target, upper) => ({ goal, lower, target, upper, s1: 1, s2: 1 })
-e = refusal(() => m.desirability([spec('Maximize', 0, 10, 10), spec('Target', 10, 5, 0)], [5, 5]))
+e = refusal(() => m.desirability([{ goal: 'Maximize', lower: 0, target: 10, s1: 1 },
+  { goal: 'Target', lower: 10, target: 5, upper: 0, s1: 1, s2: 1 }], [5, 5]))
 ok(e.code === 'invalid_desirability_limits' && e.index === 1 && e.goal === 'Target', `code=${e.code} index=${e.index}`)
+// Each goal takes the fields its curve has: one it does not read is refused, not ignored.
+e = refusal(() => m.desirability([{ goal: 'Maximize', lower: 0, target: 10, s1: 1, s2: 3 }], [5]))
+ok(e.code === 'invalid_option' && e.parameter === 's2' && e.index === 0, `unread s2: ${e.code} ${e.parameter}@${e.index}`)
+e = refusal(() => m.desirability([{ goal: 'Minimize', target: 0, s1: 1 }], [5]))
+ok(e.code === 'malformed_input' && e.parameter === 'upper' && e.index === 0, `missing upper: ${e.code} ${e.parameter}@${e.index}`)
 
 e = refusal(() => m.two_level_factorial_power(3, 0, 2, 1, 1, 2))
 ok(e.code === 'parameter_out_of_range' && e.parameter === 'alpha' && e.exclusive_min === 0 && e.exclusive_max === 1 && e.got === 2,
@@ -90,7 +95,7 @@ ok(e.code === 'dimension_mismatch' && e.parameter === 'coefficients' && e.expect
    `wrong coefficient count: ${e.code} ${e.parameter}`)
 
 // A search that cannot report a 0 as an optimum.
-const maxSpec = (lower, target) => [{ goal: 'Maximize', lower, target, upper: target, s1: 1, s2: 1 }]
+const maxSpec = (lower, target) => [{ goal: 'Maximize', lower, target, s1: 1 }]
 let opt = m.optimize_desirability(maxSpec(0, 100), Float64Array.from([10, 50, 90]))
 ok(opt.kind === 'best' && opt.index === 2 && Math.abs(opt.overall - 0.9) < 1e-12, `optimum: ${JSON.stringify(opt)}`)
 opt = m.optimize_desirability(maxSpec(200, 300), Float64Array.from([10, 50, 90]))

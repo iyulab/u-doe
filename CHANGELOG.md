@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking** A desirability spec takes the fields its goal's curve has:
+  `Maximize` — `lower`, `target`, `s1`; `Minimize` — `target`, `upper`, `s1`;
+  `Target` — all five. A field the goal does not read (`s2` or `upper` for
+  `Maximize`, …) is refused as `invalid_option` (`parameter`, `index`); it
+  was required and then silently ignored. A missing one is
+  `malformed_input`. Rust: `ResponseSpec::maximize(lower, target, s)` and
+  `ResponseSpec::minimize(target, upper, s)` drop the limit they never read;
+  `lower()`, `upper()` and `s2()` are `Option` — `None` for a goal without
+  that end or ramp.
+
 ## [0.23.1] - 2026-10-16
 
 ### Fixed
