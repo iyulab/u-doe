@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-16
+
+Depends on u-numflow 0.14.
+
 ### Changed
 
 - **Breaking** A desirability spec takes the fields its goal's curve has:
