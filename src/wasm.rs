@@ -554,6 +554,37 @@ impl From<crate::design::DesignMatrix> for DesignMatrixDto {
     }
 }
 
+/// A design with the block each run was built in.
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
+struct ClassifiedDesignDto {
+    data: Vec<Vec<f64>>,
+    factor_names: Vec<String>,
+    run_count: usize,
+    factor_count: usize,
+    /// One per row of `data`: `"factorial"`, `"axial"` or `"center"` for a
+    /// central composite design, `"edge"` or `"center"` for Box-Behnken.
+    #[tsify(type = "(\"factorial\" | \"axial\" | \"center\" | \"edge\")[]")]
+    point_types: Vec<String>,
+}
+
+impl From<crate::design::ClassifiedDesign> for ClassifiedDesignDto {
+    fn from(d: crate::design::ClassifiedDesign) -> Self {
+        let matrix = DesignMatrixDto::from(d.matrix);
+        ClassifiedDesignDto {
+            data: matrix.data,
+            factor_names: matrix.factor_names,
+            run_count: matrix.run_count,
+            factor_count: matrix.factor_count,
+            point_types: d
+                .point_types
+                .into_iter()
+                .map(|t| t.name().to_string())
+                .collect(),
+        }
+    }
+}
+
 #[derive(Serialize, tsify::Tsify)]
 #[tsify(missing_as_null)]
 struct FractionalInfoDto {
@@ -671,13 +702,15 @@ pub fn full_factorial(k: f64) -> Result<JsValue, JsValue> {
 ///
 /// `n_center`: number of center point replicates (≥ 1, default 3 if 0 is passed is rejected).
 ///
-/// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
+/// Returns `{ data, factor_names, run_count, factor_count, point_types }`;
+/// `point_types` names the block of each row: `"factorial"`, `"axial"` or
+/// `"center"`.
 ///
 /// # Errors
 /// Throws an `Error` carrying `code` if `k` is out of range (2..=6) or `n_center == 0`
 /// (`parameter_out_of_range`),
 /// or `design_type` is unrecognised.
-#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
+#[wasm_bindgen(unchecked_return_type = "ClassifiedDesignDto")]
 pub fn ccd(
     k: f64,
     #[wasm_bindgen(unchecked_param_type = "\"FaceCentered\" | \"Rotatable\" | \"Inscribed\"")]
@@ -698,24 +731,25 @@ pub fn ccd(
             )))
         }
     };
-    let design = crate::design::ccd::ccd(k, alpha_type, n_center).map_err(js_err)?;
-    to_js(&DesignMatrixDto::from(design))
+    let design = crate::design::ccd::ccd_design(k, alpha_type, n_center).map_err(js_err)?;
+    to_js(&ClassifiedDesignDto::from(design))
 }
 
 /// Generate a Box-Behnken Design (BBD).
 ///
 /// Supported: k = 3, 4, or 5.
 ///
-/// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
+/// Returns `{ data, factor_names, run_count, factor_count, point_types }`;
+/// `point_types` names the block of each row: `"edge"` or `"center"`.
 ///
 /// # Errors
 /// Throws an `Error` carrying `code` if `k` is not 3, 4, or 5, or `n_center == 0`.
-#[wasm_bindgen(unchecked_return_type = "DesignMatrixDto")]
+#[wasm_bindgen(unchecked_return_type = "ClassifiedDesignDto")]
 pub fn box_behnken(k: f64, n_center: f64) -> Result<JsValue, JsValue> {
     let k = whole(k, "k", 3, Some(5)).map_err(js_err)?;
     let n_center = whole(n_center, "n_center", 1, None).map_err(js_err)?;
-    let design = crate::design::box_behnken::box_behnken(k, n_center).map_err(js_err)?;
-    to_js(&DesignMatrixDto::from(design))
+    let design = crate::design::box_behnken::box_behnken_design(k, n_center).map_err(js_err)?;
+    to_js(&ClassifiedDesignDto::from(design))
 }
 
 /// Get a Taguchi orthogonal array.
@@ -1604,13 +1638,32 @@ pub fn optimize_desirability(
 // Power analysis
 // ---------------------------------------------------------------------------
 
+/// The power calculation and what it was made from.
+#[derive(Serialize, tsify::Tsify)]
+#[tsify(missing_as_null)]
+struct PowerDto {
+    /// The power of the two-sided t test of one effect, in `[0, 1]`.
+    power: f64,
+    /// The runs in all: `n_replicates · 2^(k-p)`.
+    runs: usize,
+    /// The model's terms besides the mean, as resolved (a named model is
+    /// capped at the effects the fraction can estimate).
+    model_terms: usize,
+    /// The error degrees of freedom: `runs − 1 − model_terms`.
+    error_df: usize,
+}
+
 /// Power of the two-sided t test of one effect in a 2^(k-p) factorial design.
 ///
 /// Computed from the noncentral t distribution with the error degrees of
 /// freedom of the fitted model, `N − 1 − model_terms` for `N` runs -- the
-/// standard DOE calculation. `model_terms` counts the model's terms besides
-/// the mean; leave it out (`undefined` or `null`) for the full model, every
-/// effect the fraction can estimate. Returns power in [0, 1].
+/// standard DOE calculation. `model_terms` is the model's number of terms
+/// besides the mean, or a name for it: `"main_effects"` (the `k` main
+/// effects), `"two_factor"` (main effects and two-factor interactions) or
+/// `"full"` (every effect the fraction can estimate); a name asking for more
+/// terms than the fraction can estimate is capped at that number. Leave it out
+/// (`undefined` or `null`) for the full model. Returns `{ power, runs,
+/// model_terms, error_df }`, the last two as resolved.
 ///
 /// # Errors
 /// Throws an `Error` carrying `code`: `parameter_out_of_range` (with
@@ -1630,8 +1683,8 @@ pub fn optimize_desirability(
 /// * `effect_size` — detectable effect δ (in response units)
 /// * `sigma` — process standard deviation σ
 /// * `alpha` — type-I error rate (e.g. 0.05)
-/// * `model_terms` — terms in the fitted model besides the mean (optional)
-#[wasm_bindgen]
+/// * `model_terms` — terms in the fitted model besides the mean, or its name (optional)
+#[wasm_bindgen(unchecked_return_type = "PowerDto")]
 pub fn two_level_factorial_power(
     k: f64,
     p: f64,
@@ -1639,26 +1692,85 @@ pub fn two_level_factorial_power(
     effect_size: f64,
     sigma: f64,
     alpha: f64,
-    model_terms: Option<f64>,
-) -> Result<f64, JsValue> {
+    #[wasm_bindgen(
+        unchecked_optional_param_type = "number | \"main_effects\" | \"two_factor\" | \"full\" | null"
+    )]
+    model_terms: Option<JsValue>,
+) -> Result<JsValue, JsValue> {
     // The bounds `power::two_level_factorial_power` checks these against.
     let k = whole(k, "k", 1, None).map_err(js_err)?;
     let p = whole(p, "p", 0, k.checked_sub(1)).map_err(js_err)?;
     let n_replicates = whole(n_replicates, "n_replicates", 1, None).map_err(js_err)?;
-    let model_terms = model_terms
-        .map(|v| whole(v, "model_terms", 1, None))
-        .transpose()
-        .map_err(js_err)?;
-    crate::power::two_level_factorial_power(
+    let model = power_model(model_terms).map_err(js_err)?;
+    let analysis = crate::power::two_level_factorial_analysis(
         k,
         p,
         n_replicates,
         effect_size,
         sigma,
         alpha,
-        model_terms,
+        model,
     )
-    .map_err(js_err)
+    .map_err(js_err)?;
+    to_js(&PowerDto {
+        power: analysis.power,
+        runs: analysis.runs,
+        model_terms: analysis.model_terms,
+        error_df: analysis.error_df,
+    })
+}
+
+/// What a power request's `model_terms` held.
+enum ModelArg {
+    /// Left out, `undefined` or `null`.
+    Absent,
+    Number(f64),
+    Text(String),
+    /// Anything else (a boolean, an object, ...).
+    Other,
+}
+
+impl ModelArg {
+    fn of(value: Option<JsValue>) -> Self {
+        match value.filter(|v| !v.is_null() && !v.is_undefined()) {
+            None => Self::Absent,
+            Some(v) => match (v.as_f64(), v.as_string()) {
+                (Some(n), _) => Self::Number(n),
+                (None, Some(text)) => Self::Text(text),
+                (None, None) => Self::Other,
+            },
+        }
+    }
+}
+
+/// The model a power request names: a term count, a name, or (absent) the
+/// full model.
+fn power_model(value: Option<JsValue>) -> Result<crate::power::PowerModel, WireError> {
+    power_model_of(ModelArg::of(value))
+}
+
+fn power_model_of(arg: ModelArg) -> Result<crate::power::PowerModel, WireError> {
+    use crate::power::PowerModel;
+    match arg {
+        ModelArg::Absent => Ok(PowerModel::Full),
+        ModelArg::Number(count) => whole(count, "model_terms", 1, None).map(PowerModel::Terms),
+        ModelArg::Text(name) => match name.as_str() {
+            "main_effects" => Ok(PowerModel::MainEffects),
+            "two_factor" => Ok(PowerModel::TwoFactor),
+            "full" => Ok(PowerModel::Full),
+            other => Err(WireError::unknown_option(
+                "model_terms",
+                other,
+                &["main_effects", "two_factor", "full"],
+            )),
+        },
+        ModelArg::Other => Err(WireError::malformed_input(
+            "model_terms",
+            "model_terms must be a number of terms or one of \"main_effects\", \
+             \"two_factor\", \"full\""
+                .to_string(),
+        )),
+    }
 }
 
 // ── Wire-schema strictness tests ─────────────────────────────────────
@@ -1725,6 +1837,42 @@ mod dto_strictness_tests {
         assert!(wire
             .iter()
             .any(|(k, p, r, _)| (*k, *p) == (7, 1) && r == "VII"));
+    }
+
+    /// `model_terms` takes a count or a name; anything else is refused at its
+    /// name, an unknown name with the names it knows.
+    #[test]
+    fn a_power_model_is_a_count_a_name_or_absent() {
+        use super::{power_model_of, ModelArg};
+        use crate::power::PowerModel::{Full, MainEffects, Terms, TwoFactor};
+        assert_eq!(power_model_of(ModelArg::Absent).expect("absent"), Full);
+        assert_eq!(
+            power_model_of(ModelArg::Number(3.0)).expect("count"),
+            Terms(3)
+        );
+        for (name, model) in [
+            ("main_effects", MainEffects),
+            ("two_factor", TwoFactor),
+            ("full", Full),
+        ] {
+            assert_eq!(
+                power_model_of(ModelArg::Text(name.into())).expect(name),
+                model
+            );
+        }
+        let unknown = power_model_of(ModelArg::Text("quadratic".into())).expect_err("unknown");
+        assert_eq!(unknown.fields["code"], "unknown_option");
+        assert_eq!(unknown.fields["parameter"], "model_terms");
+        assert_eq!(unknown.fields["got"], "quadratic");
+        assert_eq!(
+            unknown.fields["expected"],
+            serde_json::json!(["main_effects", "two_factor", "full"])
+        );
+        let other = power_model_of(ModelArg::Other).expect_err("a boolean");
+        assert_eq!(other.fields["code"], "malformed_input");
+        assert_eq!(other.fields["parameter"], "model_terms");
+        let fraction = power_model_of(ModelArg::Number(2.5)).expect_err("a fraction");
+        assert_eq!(fraction.fields["code"], "malformed_input");
     }
 
     /// A count arriving as a JS number is taken only when it is one.

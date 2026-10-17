@@ -13,7 +13,7 @@
 //! Designs for the Study of Quantitative Variables".
 //! *Technometrics* 2(4), pp. 455–475.
 
-use super::DesignMatrix;
+use super::{ClassifiedDesign, DesignMatrix, PointType};
 use crate::error::DoeError;
 
 /// Generate a Box-Behnken design for `k` factors (k = 3, 4, or 5).
@@ -35,6 +35,24 @@ use crate::error::DoeError;
 /// assert_eq!(d.factor_count(), 3);
 /// ```
 pub fn box_behnken(k: usize, n_center: usize) -> Result<DesignMatrix, DoeError> {
+    box_behnken_design(k, n_center).map(|d| d.matrix)
+}
+
+/// Generate a Box-Behnken design with the block of each run: the edge
+/// midpoints first, then the center rows -- the order of the matrix.
+///
+/// Arguments and errors as for [`box_behnken`].
+///
+/// # Examples
+///
+/// ```
+/// use u_doe::design::box_behnken::box_behnken_design;
+/// use u_doe::design::PointType;
+/// let d = box_behnken_design(3, 3).unwrap();
+/// assert_eq!(d.point_types.iter().filter(|&&t| t == PointType::Edge).count(), 12);
+/// assert_eq!(d.point_types.iter().filter(|&&t| t == PointType::Center).count(), 3);
+/// ```
+pub fn box_behnken_design(k: usize, n_center: usize) -> Result<ClassifiedDesign, DoeError> {
     if !matches!(k, 3..=5) {
         return Err(DoeError::count_out_of_range("k", 3..=5, k));
     }
@@ -57,14 +75,20 @@ pub fn box_behnken(k: usize, n_center: usize) -> Result<DesignMatrix, DoeError> 
         }
     }
 
+    let mut point_types = vec![PointType::Edge; data.len()];
+
     // Center points
     for _ in 0..n_center {
         data.push(vec![0.0_f64; k]);
+        point_types.push(PointType::Center);
     }
 
-    Ok(DesignMatrix {
-        data,
-        factor_names: DesignMatrix::default_names(k),
+    Ok(ClassifiedDesign {
+        matrix: DesignMatrix {
+            data,
+            factor_names: DesignMatrix::default_names(k),
+        },
+        point_types,
     })
 }
 
@@ -93,6 +117,30 @@ fn bib_pairs(k: usize) -> Vec<(usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every run's type agrees with its coordinates: an edge midpoint has
+    /// exactly two non-zero coordinates, a center run none.
+    #[test]
+    fn point_types_agree_with_the_coordinates() {
+        for k in 3..=5 {
+            let d = box_behnken_design(k, 3).unwrap();
+            assert_eq!(d.point_types.len(), d.matrix.run_count());
+            let centers = d
+                .point_types
+                .iter()
+                .filter(|&&t| t == PointType::Center)
+                .count();
+            assert_eq!(centers, 3, "k={k}");
+            for (row, t) in d.matrix.data.iter().zip(&d.point_types) {
+                let nonzero = row.iter().filter(|&&x| x != 0.0).count();
+                match t {
+                    PointType::Center => assert_eq!(nonzero, 0),
+                    PointType::Edge => assert_eq!(nonzero, 2),
+                    other => panic!("a Box-Behnken design has no {other:?} points"),
+                }
+            }
+        }
+    }
 
     #[test]
     fn bbd_k3_runs() {

@@ -12,6 +12,41 @@ pub use dsd::definitive_screening;
 
 use crate::error::DoeError;
 
+/// The block of a response-surface design a run belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointType {
+    /// A corner of the factorial cube (all coordinates at the factorial level).
+    Factorial,
+    /// An axial (star) point: one coordinate off the center, the rest at 0.
+    Axial,
+    /// A run at the center of the region (all coordinates 0).
+    Center,
+    /// An edge midpoint (Box-Behnken): two coordinates at ±1, the rest at 0.
+    Edge,
+}
+
+impl PointType {
+    /// The wire name (`"factorial"`, `"axial"`, `"center"`, `"edge"`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Factorial => "factorial",
+            Self::Axial => "axial",
+            Self::Center => "center",
+            Self::Edge => "edge",
+        }
+    }
+}
+
+/// A design matrix with the block each run was built in -- what the
+/// construction knows and the coordinates only hint at.
+#[derive(Debug, Clone)]
+pub struct ClassifiedDesign {
+    /// The runs.
+    pub matrix: DesignMatrix,
+    /// The type of each run, in the order of `matrix.data`.
+    pub point_types: Vec<PointType>,
+}
+
 /// DOE design matrix in coded units.
 ///
 /// Each row represents one experimental run.

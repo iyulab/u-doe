@@ -158,7 +158,7 @@ export function estimate_effects(design: number[][], responses: number[] | Float
 export function desirability(specs: ResponseSpecInput[],
   responses: number[] | Float64Array): DesirabilityResultDto;
 export function ccd(k: number, design_type: "FaceCentered" | "Rotatable" | "Inscribed",
-  n_center: number): DesignMatrixDto;
+  n_center: number): ClassifiedDesignDto;
 ```
 
 An absent optional value is declared `T | null`, which is what the binding
@@ -286,13 +286,17 @@ Metadata for the fraction `fractional_factorial(k, p)` emits: resolution, defini
 
 Generate a Plackett-Burman screening design (k = 1..19).
 
-#### `ccd(k, design_type, n_center) -> DesignMatrix`
+#### `ccd(k, design_type, n_center) -> ClassifiedDesign`
 
 Generate a Central Composite Design. `design_type`: `"FaceCentered"` | `"Rotatable"` | `"Inscribed"`. k = 2..6.
+The result is a design matrix plus `point_types`, one per row — `"factorial"`, `"axial"` or `"center"` —
+so a run sheet or a plot tells the blocks apart without guessing from the coordinates (an inscribed
+design's factorial level is not an integer). Rust: `ccd_design`.
 
-#### `box_behnken(k, n_center) -> DesignMatrix`
+#### `box_behnken(k, n_center) -> ClassifiedDesign`
 
-Generate a Box-Behnken design (k = 3, 4, or 5).
+Generate a Box-Behnken design (k = 3, 4, or 5). `point_types` is `"edge"` (an edge midpoint) or
+`"center"` for each row. Rust: `box_behnken_design`.
 
 #### `taguchi_array(name, k) -> DesignMatrix`
 
@@ -520,23 +524,35 @@ throws, plus `empty_input` (`parameter: "candidates"`) for no candidates, `dimen
 `value_not_finite` (`parameter: "candidates"`, `index`) for a response that is
 not finite.
 
-#### `two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha, model_terms?) -> f64`
+#### `two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha, model_terms?) -> PowerResult`
 
-Power of the two-sided t test of one effect in a 2^(k-p) factorial design, in [0, 1].
+Power of the two-sided t test of one effect in a 2^(k-p) factorial design, with what it was
+made from: `{ power, runs, model_terms, error_df }` — `power` in [0, 1], `runs = n_replicates ·
+2^(k-p)`, and the model's term count and error degrees of freedom as resolved
+(`error_df = runs − 1 − model_terms`).
 It is computed from the noncentral t distribution with the fitted model's error degrees of
-freedom, `N − 1 − model_terms` for `N = n_replicates · 2^(k-p)` runs — the calculation
-standard DOE references and packages use. `model_terms` counts the model's terms besides
-the mean; omit it (or pass `null`) for the full model, every effect the fraction can
-estimate (`2^(k-p) − 1` terms), or pass e.g. `k` for a main-effects model.
+freedom — the calculation standard DOE references and packages use. `model_terms` is the
+model's number of terms besides the mean, or a name for it: `"main_effects"` (the `k` main
+effects), `"two_factor"` (main effects and two-factor interactions) or `"full"` (every effect the
+fraction can estimate, `2^(k-p) − 1` terms). A name asking for more terms than the fraction can
+estimate is capped at that number — a resolution III fraction aliases its interactions — and
+the returned `model_terms` is the capped one. Omit it (or pass `null`) for the full model.
+Rust: `two_level_factorial_analysis` (the `f64` `two_level_factorial_power` is its `power`) and
+`model_terms(k, p, model)`.
 
 ```js
-two_level_factorial_power(3, 0, 2, 2.0, 1.5, 0.05)     // 0.648 (8 error df)
-two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05, 3)  // 0.306 (main effects, 4 error df)
+two_level_factorial_power(3, 0, 2, 2.0, 1.5, 0.05)
+// { power: 0.648, runs: 16, model_terms: 7, error_df: 8 }
+two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05, 3)
+// { power: 0.306, runs: 8, model_terms: 3, error_df: 4 }  (main effects)
+two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05, "main_effects")   // the same
 two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05)     // throws no_error_degrees_of_freedom
 ```
 
 Throws `parameter_out_of_range` (`k = 0`, `p >= k`, no replicates, `model_terms` outside
-`1..=2^(k-p) − 1`, a non-positive effect or σ, `alpha` outside (0, 1)), `value_not_finite`
+`1..=2^(k-p) − 1`, a non-positive effect or σ, `alpha` outside (0, 1)), `unknown_option`
+(`model_terms` a name other than the three, with the names it knows), `malformed_input`
+(`model_terms` neither a number nor a name), `value_not_finite`
 (a NaN or ±Infinity effect, σ or `alpha`), or `no_error_degrees_of_freedom` when the model uses every degree of freedom — an
 unreplicated full model, where no effect can be tested. Until 0.15.0 this function used a
 normal approximation, which ignores the error degrees of freedom and overstates power most

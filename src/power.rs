@@ -18,6 +18,61 @@ use u_numflow::special::{noncentral_t_cdf, t_distribution_quantile};
 
 use crate::error::DoeError;
 
+/// The terms of the model fitted to a 2^(k-p) design, besides the mean: a
+/// count, or a named model whose count the design resolves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerModel {
+    /// This many terms (`1..=2^(k-p) − 1`).
+    Terms(usize),
+    /// The `k` main effects.
+    MainEffects,
+    /// The `k` main effects and the `k(k−1)/2` two-factor interactions, as
+    /// many of them as the fraction can estimate.
+    TwoFactor,
+    /// Every effect the fraction can estimate, `2^(k-p) − 1` of them.
+    Full,
+}
+
+/// A power calculation with the quantities it was made from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PowerAnalysis {
+    /// The power of the two-sided t test of one effect, in `[0, 1]`.
+    pub power: f64,
+    /// The runs in all: `n_replicates · 2^(k-p)`.
+    pub runs: usize,
+    /// The terms of the model besides the mean, as resolved from the
+    /// [`PowerModel`] -- a named model capped at what the fraction can estimate.
+    pub model_terms: usize,
+    /// The error degrees of freedom: `runs − 1 − model_terms`.
+    pub error_df: usize,
+}
+
+/// The number of model terms `model` stands for in a 2^(k-p) design -- what
+/// the power calculation fits.
+///
+/// A named model asks for more terms than a small fraction can estimate (a
+/// resolution III fraction aliases its interactions, so `TwoFactor` is capped
+/// at the `2^(k-p) − 1` effects there are); the count returned is the capped
+/// one. A [`PowerModel::Terms`] count outside `1..=2^(k-p) − 1` is refused.
+///
+/// # Errors
+/// [`DoeError::ParameterOutOfRange`] if `k` is 0, `p >= k`, or a `Terms` count
+/// is outside the range.
+///
+/// # Examples
+///
+/// ```
+/// use u_doe::power::{model_terms, PowerModel};
+/// assert_eq!(model_terms(3, 0, PowerModel::MainEffects).unwrap(), 3);
+/// assert_eq!(model_terms(3, 0, PowerModel::TwoFactor).unwrap(), 6);
+/// // 2^(5-2) has 8 runs: 7 effects, though 5 + 10 terms were asked for.
+/// assert_eq!(model_terms(5, 2, PowerModel::TwoFactor).unwrap(), 7);
+/// ```
+pub fn model_terms(k: usize, p: usize, model: PowerModel) -> Result<usize, DoeError> {
+    check_design(k, p)?;
+    Ok(Design::new(k, p, model)?.terms)
+}
+
 /// Compute the power of the two-sided t test of one effect in a 2^(k-p)
 /// factorial design.
 ///
@@ -76,26 +131,65 @@ pub fn two_level_factorial_power(
     alpha: f64,
     model_terms: Option<usize>,
 ) -> Result<f64, DoeError> {
+    two_level_factorial_analysis(
+        k,
+        p,
+        n_replicates,
+        effect_size,
+        sigma,
+        alpha,
+        model_terms.map_or(PowerModel::Full, PowerModel::Terms),
+    )
+    .map(|a| a.power)
+}
+
+/// [`two_level_factorial_power`] with the quantities it is made from: the run
+/// count, the model's term count and the error degrees of freedom, and the
+/// model given by name as well as by count -- so a caller shows them beside
+/// the power without applying the estimability cap and the `N − 1 − terms`
+/// rule a second time.
+///
+/// # Errors
+/// As [`two_level_factorial_power`].
+///
+/// # Examples
+///
+/// ```
+/// use u_doe::power::{two_level_factorial_analysis, PowerModel};
+/// let a = two_level_factorial_analysis(3, 0, 2, 2.0, 1.5, 0.05, PowerModel::Full).unwrap();
+/// assert!((a.power - 0.648).abs() < 1e-3);
+/// assert_eq!((a.runs, a.model_terms, a.error_df), (16, 7, 8));
+/// // Main effects only: 16 − 1 − 3 = 12 error df.
+/// let m = two_level_factorial_analysis(3, 0, 2, 2.0, 1.5, 0.05, PowerModel::MainEffects).unwrap();
+/// assert_eq!((m.model_terms, m.error_df), (3, 12));
+/// ```
+pub fn two_level_factorial_analysis(
+    k: usize,
+    p: usize,
+    n_replicates: usize,
+    effect_size: f64,
+    sigma: f64,
+    alpha: f64,
+    model: PowerModel,
+) -> Result<PowerAnalysis, DoeError> {
     check_design(k, p)?;
     if n_replicates == 0 {
         return Err(DoeError::count_out_of_range("n_replicates", 1.., 0));
     }
     check_effect(effect_size, sigma, alpha)?;
-    let design = Design::new(k, p, model_terms)?;
+    let design = Design::new(k, p, model)?;
     let df = design
         .error_df(n_replicates)
         .ok_or(DoeError::NoErrorDegreesOfFreedom {
             terms: design.terms,
             runs: design.runs(n_replicates),
         })?;
-    Ok(power_unchecked(
-        &design,
-        n_replicates,
-        df,
-        effect_size,
-        sigma,
-        alpha,
-    ))
+    Ok(PowerAnalysis {
+        power: power_unchecked(&design, n_replicates, df, effect_size, sigma, alpha),
+        runs: design.runs(n_replicates),
+        model_terms: design.terms,
+        error_df: df as usize,
+    })
 }
 
 /// Find the minimum number of replicates to achieve `target_power`.
@@ -138,7 +232,11 @@ pub fn required_replicates(
     check_max_replicates(max_replicates)?;
     check_effect(effect_size, sigma, alpha)?;
     DoeError::check_real("target_power", target_power, OPEN_UNIT_INTERVAL)?;
-    let design = Design::new(k, p, model_terms)?;
+    let design = Design::new(
+        k,
+        p,
+        model_terms.map_or(PowerModel::Full, PowerModel::Terms),
+    )?;
     Ok((1..=max_replicates).find(|&n| {
         design.error_df(n).is_some_and(|df| {
             power_unchecked(&design, n, df, effect_size, sigma, alpha) >= target_power
@@ -168,7 +266,11 @@ pub fn power_curve(
     check_design(k, p)?;
     check_max_replicates(max_replicates)?;
     check_effect(effect_size, sigma, alpha)?;
-    let design = Design::new(k, p, model_terms)?;
+    let design = Design::new(
+        k,
+        p,
+        model_terms.map_or(PowerModel::Full, PowerModel::Terms),
+    )?;
     Ok((1..=max_replicates)
         .filter_map(|n| {
             design.error_df(n).map(|df| {
@@ -195,19 +297,22 @@ struct Design {
 }
 
 impl Design {
-    /// `model_terms`, checked against the `2^(k-p) − 1` effects the fraction
-    /// can estimate; `None` is all of them (the full model). `k` and `p` must
-    /// already be checked.
-    fn new(k: usize, p: usize, model_terms: Option<usize>) -> Result<Self, DoeError> {
+    /// `model`'s terms: a count checked against the `2^(k-p) − 1` effects the
+    /// fraction can estimate, or a named model capped at that number. `k` and
+    /// `p` must already be checked.
+    fn new(k: usize, p: usize, model: PowerModel) -> Result<Self, DoeError> {
         // Saturates for a fraction too large to count, which no term count reaches.
         let estimable = u32::try_from(k - p)
             .ok()
             .and_then(|e| 1usize.checked_shl(e))
             .map_or(usize::MAX, |runs| runs - 1);
-        let terms = match model_terms {
-            None => estimable,
-            Some(terms) if (1..=estimable).contains(&terms) => terms,
-            Some(terms) => {
+        let named = |wanted: usize| wanted.min(estimable);
+        let terms = match model {
+            PowerModel::Full => estimable,
+            PowerModel::MainEffects => named(k),
+            PowerModel::TwoFactor => named(k.saturating_add(k.saturating_mul(k - 1) / 2)),
+            PowerModel::Terms(terms) if (1..=estimable).contains(&terms) => terms,
+            PowerModel::Terms(terms) => {
                 return Err(DoeError::count_out_of_range(
                     "model_terms",
                     1..=estimable,
@@ -279,6 +384,53 @@ fn power_unchecked(
     let crit = t_distribution_quantile(1.0 - alpha / 2.0, df);
     let power = 1.0 - noncentral_t_cdf(crit, df, ncp) + noncentral_t_cdf(-crit, df, ncp);
     power.clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod analysis_tests {
+    use super::*;
+
+    #[test]
+    fn named_models_resolve_and_cap_at_what_the_fraction_estimates() {
+        // 2^3: 7 effects. Main effects 3, with two-factor interactions 6.
+        assert_eq!(model_terms(3, 0, PowerModel::MainEffects).unwrap(), 3);
+        assert_eq!(model_terms(3, 0, PowerModel::TwoFactor).unwrap(), 6);
+        assert_eq!(model_terms(3, 0, PowerModel::Full).unwrap(), 7);
+        // 2^(5-2): 8 runs, 7 effects -- 5 + 10 terms asked for, 7 estimable.
+        assert_eq!(model_terms(5, 2, PowerModel::TwoFactor).unwrap(), 7);
+        // 2^(6-3): 8 runs, 7 effects, 6 main effects.
+        assert_eq!(model_terms(6, 3, PowerModel::MainEffects).unwrap(), 6);
+        assert_eq!(model_terms(6, 3, PowerModel::TwoFactor).unwrap(), 7);
+        // A count is checked, not capped.
+        assert!(model_terms(3, 0, PowerModel::Terms(8)).is_err());
+        assert!(model_terms(3, 0, PowerModel::Terms(0)).is_err());
+        assert!(model_terms(0, 0, PowerModel::Full).is_err());
+    }
+
+    #[test]
+    fn the_analysis_carries_runs_terms_and_error_df() {
+        for (k, p, n, model) in [
+            (3, 0, 2, PowerModel::Full),
+            (3, 0, 1, PowerModel::MainEffects),
+            (4, 1, 3, PowerModel::TwoFactor),
+            (5, 2, 4, PowerModel::TwoFactor),
+        ] {
+            let a = two_level_factorial_analysis(k, p, n, 2.0, 1.5, 0.05, model).unwrap();
+            let runs = n * (1usize << (k - p));
+            assert_eq!(a.runs, runs);
+            assert_eq!(a.model_terms, model_terms(k, p, model).unwrap());
+            assert_eq!(a.error_df, runs - 1 - a.model_terms);
+            // The same number the bare function gives for the resolved count.
+            let bare =
+                two_level_factorial_power(k, p, n, 2.0, 1.5, 0.05, Some(a.model_terms)).unwrap();
+            assert_eq!(a.power, bare);
+        }
+        // No error df left: refused with the figures, as before.
+        assert!(matches!(
+            two_level_factorial_analysis(3, 0, 1, 2.0, 1.5, 0.05, PowerModel::Full),
+            Err(DoeError::NoErrorDegreesOfFreedom { terms: 7, runs: 8 })
+        ));
+    }
 }
 
 #[cfg(test)]

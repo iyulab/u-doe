@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ccd` and `box_behnken` return `point_types`, one per row: `factorial`, `axial`
+  or `center` for a central composite design, `edge` or `center` for Box-Behnken
+  — the block each run was built in, so a run sheet or plot no longer infers it
+  by counting zero coordinates. Rust: `ccd::ccd_design`,
+  `box_behnken::box_behnken_design` (`ClassifiedDesign`, `PointType`); `ccd` and
+  `box_behnken` still return the matrix.
+- `two_level_factorial_power` returns `{ power, runs, model_terms, error_df }`
+  and takes the model by name — `"main_effects"`, `"two_factor"` or `"full"` —
+  as well as by term count; a name is capped at the effects the fraction can
+  estimate and the returned `model_terms` is the capped count. Rust:
+  `power::two_level_factorial_analysis` (`PowerAnalysis`, `PowerModel`) and
+  `power::model_terms`; `two_level_factorial_power` keeps returning the power.
+
+### Changed
+
+- **Breaking** the WebAssembly `two_level_factorial_power` returns an object
+  where it returned a number: read `.power`.
+
 ## [0.24.0] - 2026-10-16
 
 Depends on u-numflow 0.14.

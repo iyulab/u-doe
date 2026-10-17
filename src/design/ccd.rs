@@ -21,7 +21,7 @@
 //! Attainment of Optimum Conditions". *Journal of the Royal Statistical
 //! Society B*, 13(1), pp. 1–45.
 
-use super::{factorial::full_factorial, DesignMatrix};
+use super::{factorial::full_factorial, ClassifiedDesign, DesignMatrix, PointType};
 use crate::error::DoeError;
 
 /// Method for choosing the axial distance α.
@@ -69,6 +69,31 @@ pub fn rotatable_alpha(k: usize) -> f64 {
 /// assert_eq!(d.factor_count(), 2);
 /// ```
 pub fn ccd(k: usize, alpha_type: AlphaType, n_center: usize) -> Result<DesignMatrix, DoeError> {
+    ccd_design(k, alpha_type, n_center).map(|d| d.matrix)
+}
+
+/// Generate a Central Composite Design with the block of each run: the
+/// factorial rows first, then the axial pair of each factor in turn, then the
+/// center rows -- the order of the matrix, which is how a run sheet or a plot
+/// tells the three apart without guessing from the coordinates (an inscribed
+/// design's factorial level is not an integer).
+///
+/// Arguments and errors as for [`ccd`].
+///
+/// # Examples
+///
+/// ```
+/// use u_doe::design::ccd::{ccd_design, AlphaType};
+/// use u_doe::design::PointType;
+/// let d = ccd_design(2, AlphaType::FaceCentered, 3).unwrap();
+/// assert_eq!(d.point_types.iter().filter(|&&t| t == PointType::Axial).count(), 4);
+/// assert_eq!(d.point_types.len(), d.matrix.run_count());
+/// ```
+pub fn ccd_design(
+    k: usize,
+    alpha_type: AlphaType,
+    n_center: usize,
+) -> Result<ClassifiedDesign, DoeError> {
     if !(2..=6).contains(&k) {
         return Err(DoeError::count_out_of_range("k", 2..=6, k));
     }
@@ -101,6 +126,8 @@ pub fn ccd(k: usize, alpha_type: AlphaType, n_center: usize) -> Result<DesignMat
         .map(|row| row.iter().map(|&x| x * factorial_scale).collect())
         .collect();
 
+    let mut point_types = vec![PointType::Factorial; data.len()];
+
     // 2. Axial points: ±axial_val on each axis, all others 0
     for j in 0..k {
         let mut lo = vec![0.0_f64; k];
@@ -109,22 +136,57 @@ pub fn ccd(k: usize, alpha_type: AlphaType, n_center: usize) -> Result<DesignMat
         hi[j] = axial_val;
         data.push(lo);
         data.push(hi);
+        point_types.extend([PointType::Axial; 2]);
     }
 
     // 3. Center points
     for _ in 0..n_center {
         data.push(vec![0.0_f64; k]);
+        point_types.push(PointType::Center);
     }
 
-    Ok(DesignMatrix {
-        data,
-        factor_names: DesignMatrix::default_names(k),
+    Ok(ClassifiedDesign {
+        matrix: DesignMatrix {
+            data,
+            factor_names: DesignMatrix::default_names(k),
+        },
+        point_types,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The type of every run agrees with its coordinates: a center run is all
+    /// zeros, an axial run has exactly one non-zero coordinate, a factorial
+    /// run has none at zero -- for every alpha type and size.
+    #[test]
+    fn point_types_agree_with_the_coordinates() {
+        for k in 2..=6 {
+            for alpha in [
+                AlphaType::FaceCentered,
+                AlphaType::Rotatable,
+                AlphaType::Inscribed,
+            ] {
+                let d = ccd_design(k, alpha, 3).unwrap();
+                assert_eq!(d.point_types.len(), d.matrix.run_count());
+                let counts = |t| d.point_types.iter().filter(|&&p| p == t).count();
+                assert_eq!(counts(PointType::Factorial), 1 << k, "k={k}");
+                assert_eq!(counts(PointType::Axial), 2 * k, "k={k}");
+                assert_eq!(counts(PointType::Center), 3, "k={k}");
+                for (row, t) in d.matrix.data.iter().zip(&d.point_types) {
+                    let zeros = row.iter().filter(|&&x| x == 0.0).count();
+                    match t {
+                        PointType::Center => assert_eq!(zeros, k),
+                        PointType::Axial => assert_eq!(zeros, k - 1),
+                        PointType::Factorial => assert_eq!(zeros, 0),
+                        PointType::Edge => unreachable!("a CCD has no edge points"),
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn ccd_face_centered_k2_run_count() {
