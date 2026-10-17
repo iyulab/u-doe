@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-17
+
+Depends on u-numflow 0.14.
+
 ### Added
 
 - `ccd` and `box_behnken` return `point_types`, one per row: `factorial`, `axial`

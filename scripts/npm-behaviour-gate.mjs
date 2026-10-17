@@ -65,9 +65,28 @@ ok(e.code === 'parameter_out_of_range' && e.parameter === 'alpha' && e.exclusive
 // the normal approximation said 0.760), and an unreplicated full model
 // has no error df to test against.
 const pw = m.two_level_factorial_power(3, 0, 2, 2.0, 1.5, 0.05)
-ok(Math.abs(pw - 0.6480) < 1e-3, `two_level_factorial_power 2^3 x 2 = ${pw}, want 0.648`)
+ok(Math.abs(pw.power - 0.6480) < 1e-3, `two_level_factorial_power 2^3 x 2 = ${pw.power}, want 0.648`)
+ok(pw.runs === 16 && pw.model_terms === 7 && pw.error_df === 8,
+  `the quantities behind the power: runs=${pw.runs} model_terms=${pw.model_terms} error_df=${pw.error_df}`)
 e = refusal(() => m.two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05))
 ok(e.code === 'no_error_degrees_of_freedom' && e.terms === 7 && e.runs === 8, `code=${e.code}`)
+// A model by name resolves to its term count, capped at what the fraction estimates.
+const main = m.two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05, 'main_effects')
+ok(main.model_terms === 3 && main.error_df === 4 && Math.abs(main.power - m.two_level_factorial_power(3, 0, 1, 2.0, 1.5, 0.05, 3).power) < 1e-12,
+  `main_effects: model_terms=${main.model_terms} error_df=${main.error_df}`)
+const capped = m.two_level_factorial_power(5, 2, 4, 2.0, 1.5, 0.05, 'two_factor')
+ok(capped.model_terms === 7, `two_factor on 2^(5-2) is capped at the 7 estimable effects, got ${capped.model_terms}`)
+e = refusal(() => m.two_level_factorial_power(3, 0, 2, 2.0, 1.5, 0.05, 'quadratic'))
+ok(e.code === 'unknown_option' && e.parameter === 'model_terms' && e.got === 'quadratic' && Array.isArray(e.expected),
+  `unknown model name: ${e.code} ${e.parameter}`)
+
+// A response-surface design says which block each run belongs to.
+const cc = m.ccd(2, 'FaceCentered', 3)
+const count = (d, t) => d.point_types.filter(x => x === t).length
+ok(cc.point_types.length === cc.run_count && count(cc, 'factorial') === 4 && count(cc, 'axial') === 4 && count(cc, 'center') === 3,
+  `ccd point_types: ${cc.point_types.join(',')}`)
+const bb = m.box_behnken(3, 3)
+ok(count(bb, 'edge') === 12 && count(bb, 'center') === 3, `box_behnken point_types: ${bb.point_types.join(',')}`)
 
 // Inputs that once trapped the module are refused like any other.
 e = refusal(() => m.fit_rsm([], [], []))
