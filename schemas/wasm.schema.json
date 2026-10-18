@@ -1,0 +1,1403 @@
+{
+  "$defs": {
+    "AscentStepDto": {
+      "properties": {
+        "coded": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "step_number": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "coded",
+        "step_number"
+      ],
+      "type": "object"
+    },
+    "ClassifiedDesignDto": {
+      "description": "A design with the block each run was built in.",
+      "properties": {
+        "data": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "factor_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "factor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "point_types": {
+          "description": "One per row of `data`: `\"factorial\"`, `\"axial\"` or `\"center\"` for a\ncentral composite design, `\"edge\"` or `\"center\"` for Box-Behnken.",
+          "items": {
+            "enum": [
+              "factorial",
+              "axial",
+              "center",
+              "edge"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "run_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "data",
+        "factor_names",
+        "run_count",
+        "factor_count",
+        "point_types"
+      ],
+      "type": "object"
+    },
+    "CurvatureDto": {
+      "properties": {
+        "df": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "f_statistic": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p_value": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "sum_of_squares": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "sum_of_squares",
+        "df"
+      ],
+      "type": "object"
+    },
+    "DesignMatrixDto": {
+      "properties": {
+        "data": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "factor_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "factor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "run_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "data",
+        "factor_names",
+        "run_count",
+        "factor_count"
+      ],
+      "type": "object"
+    },
+    "DesirabilityOptimumDto": {
+      "oneOf": [
+        {
+          "properties": {
+            "index": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "individual": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "best",
+              "type": "string"
+            },
+            "overall": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "index",
+            "overall",
+            "individual"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "infeasible",
+              "type": "string"
+            },
+            "unreachable": {
+              "items": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "unreachable"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "DesirabilityResultDto": {
+      "properties": {
+        "individual": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "overall": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "individual",
+        "overall"
+      ],
+      "type": "object"
+    },
+    "DoeAnovaResultDto": {
+      "properties": {
+        "curvature": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CurvatureDto"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effects": {
+          "items": {
+            "$ref": "#/$defs/EffectRowDto"
+          },
+          "type": "array"
+        },
+        "fitted": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "pure_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PureErrorDto"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "r_squared": {
+          "format": "double",
+          "type": "number"
+        },
+        "r_squared_adj": {
+          "format": "double",
+          "type": "number"
+        },
+        "residual_df": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "residual_ss": {
+          "format": "double",
+          "type": "number"
+        },
+        "residuals": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "total_ss": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "effects",
+        "residual_ss",
+        "residual_df",
+        "total_ss",
+        "r_squared",
+        "r_squared_adj",
+        "fitted",
+        "residuals"
+      ],
+      "type": "object"
+    },
+    "EffectEstimateDto": {
+      "properties": {
+        "columns": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "estimate": {
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "percent_contribution": {
+          "format": "double",
+          "type": "number"
+        },
+        "sum_of_squares": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "columns",
+        "estimate",
+        "sum_of_squares",
+        "percent_contribution"
+      ],
+      "type": "object"
+    },
+    "EffectRowDto": {
+      "properties": {
+        "df": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "f_statistic": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_square": {
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "p_value": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "sum_of_squares": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "sum_of_squares",
+        "df",
+        "mean_square"
+      ],
+      "type": "object"
+    },
+    "EstimateEffectsResultDto": {
+      "properties": {
+        "effects": {
+          "items": {
+            "$ref": "#/$defs/EffectEstimateDto"
+          },
+          "type": "array"
+        },
+        "half_normal": {
+          "items": {
+            "$ref": "#/$defs/HalfNormalPointDto"
+          },
+          "type": "array"
+        },
+        "lenth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LenthDto"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Lenth's margin of error -- the line a half-normal plot is read against.\n`null` when there are fewer than 3 distinct contrasts."
+        }
+      },
+      "required": [
+        "effects",
+        "half_normal"
+      ],
+      "type": "object"
+    },
+    "FractionalInfoDto": {
+      "properties": {
+        "defining_relation": {
+          "type": "string"
+        },
+        "generators": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "k": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "p": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resolution": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "k",
+        "p",
+        "resolution",
+        "defining_relation",
+        "generators"
+      ],
+      "type": "object"
+    },
+    "HalfNormalPointDto": {
+      "properties": {
+        "abs_effect": {
+          "format": "double",
+          "type": "number"
+        },
+        "quantile": {
+          "format": "double",
+          "type": "number"
+        },
+        "term_index": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "term_index",
+        "abs_effect",
+        "quantile"
+      ],
+      "type": "object"
+    },
+    "LeastSquaresFitDto": {
+      "properties": {
+        "fitted": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "intercept": {
+          "format": "double",
+          "type": "number"
+        },
+        "r_squared": {
+          "format": "double",
+          "type": "number"
+        },
+        "r_squared_adj": {
+          "format": "double",
+          "type": "number"
+        },
+        "residual_df": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "residual_ss": {
+          "format": "double",
+          "type": "number"
+        },
+        "residuals": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "terms": {
+          "items": {
+            "$ref": "#/$defs/LeastSquaresTermDto"
+          },
+          "type": "array"
+        },
+        "total_ss": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "intercept",
+        "terms",
+        "residual_ss",
+        "residual_df",
+        "total_ss",
+        "r_squared",
+        "r_squared_adj",
+        "fitted",
+        "residuals"
+      ],
+      "type": "object"
+    },
+    "LeastSquaresTermDto": {
+      "properties": {
+        "coefficient": {
+          "format": "double",
+          "type": "number"
+        },
+        "df": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "effect": {
+          "format": "double",
+          "type": "number"
+        },
+        "f_statistic": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_square": {
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "p_value": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "std_error": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "sum_of_squares": {
+          "format": "double",
+          "type": "number"
+        },
+        "t_statistic": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "coefficient",
+        "effect",
+        "sum_of_squares",
+        "df",
+        "mean_square"
+      ],
+      "type": "object"
+    },
+    "LenthDto": {
+      "properties": {
+        "df": {
+          "format": "double",
+          "type": "number"
+        },
+        "distinct_contrasts": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "margin_of_error": {
+          "format": "double",
+          "type": "number"
+        },
+        "pse": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "pse",
+        "margin_of_error",
+        "df",
+        "distinct_contrasts"
+      ],
+      "type": "object"
+    },
+    "PowerDto": {
+      "description": "The power calculation and what it was made from.",
+      "properties": {
+        "error_df": {
+          "description": "The error degrees of freedom: `runs − 1 − model_terms`.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model_terms": {
+          "description": "The model's terms besides the mean, as resolved (a named model is\ncapped at the effects the fraction can estimate).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "power": {
+          "description": "The power of the two-sided t test of one effect, in `[0, 1]`.",
+          "format": "double",
+          "type": "number"
+        },
+        "runs": {
+          "description": "The runs in all: `n_replicates · 2^(k-p)`.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "power",
+        "runs",
+        "model_terms",
+        "error_df"
+      ],
+      "type": "object"
+    },
+    "PureErrorDto": {
+      "properties": {
+        "df": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sum_of_squares": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "sum_of_squares",
+        "df"
+      ],
+      "type": "object"
+    },
+    "ResponseSpecInput": {
+      "additionalProperties": false,
+      "description": "One response's desirability specification, as `desirability` and\n`optimize_desirability` read it. Declared for TypeScript so a misspelt\nfield or goal fails to compile rather than at the boundary.\n\nEach goal takes the limits and exponents its curve has: `Maximize`\n`lower`, `target`, `s1`; `Minimize` `target`, `upper`, `s1`; `Target` all\nfive. A field the goal does not read is refused (`invalid_option`), not\nignored -- it used to be required and then ignored.",
+      "properties": {
+        "goal": {
+          "enum": [
+            "Maximize",
+            "Minimize",
+            "Target"
+          ],
+          "type": "string"
+        },
+        "importance": {
+          "default": 1.0,
+          "description": "Relative importance weight rᵢ (Derringer-Suich). Optional; defaults to 1.0.",
+          "format": "double",
+          "type": "number"
+        },
+        "lower": {
+          "default": null,
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "s1": {
+          "format": "double",
+          "type": "number"
+        },
+        "s2": {
+          "default": null,
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "target": {
+          "format": "double",
+          "type": "number"
+        },
+        "upper": {
+          "default": null,
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "goal",
+        "target",
+        "s1"
+      ],
+      "type": "object"
+    },
+    "RsmModelDto": {
+      "properties": {
+        "coefficients": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "factor_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "r_squared": {
+          "format": "double",
+          "type": "number"
+        },
+        "terms": {
+          "description": "What each coefficient is, in the same order.\n\nWithout it the order is knowable only from the crate's source, so a\ncaller who displays coefficients -- or rebuilds the polynomial -- copies\na layout it cannot check against the value it was handed.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "coefficients",
+        "terms",
+        "r_squared",
+        "factor_count"
+      ],
+      "type": "object"
+    },
+    "SteepestAscentResultDto": {
+      "properties": {
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/AscentStepDto"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "steps"
+      ],
+      "type": "object"
+    },
+    "box_behnken.input": {
+      "additionalProperties": false,
+      "description": "The arguments of box_behnken(k, n_center), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "n_center": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "k",
+        "n_center"
+      ],
+      "type": "object"
+    },
+    "box_behnken.output": {
+      "$ref": "#/$defs/ClassifiedDesignDto"
+    },
+    "ccd.input": {
+      "additionalProperties": false,
+      "description": "The arguments of ccd(k, design_type, n_center), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "design_type": {
+          "enum": [
+            "FaceCentered",
+            "Rotatable",
+            "Inscribed"
+          ],
+          "type": "string"
+        },
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "n_center": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "k",
+        "design_type",
+        "n_center"
+      ],
+      "type": "object"
+    },
+    "ccd.output": {
+      "$ref": "#/$defs/ClassifiedDesignDto"
+    },
+    "definitive_screening.input": {
+      "additionalProperties": false,
+      "description": "The arguments of definitive_screening(k), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "k"
+      ],
+      "type": "object"
+    },
+    "definitive_screening.output": {
+      "$ref": "#/$defs/DesignMatrixDto"
+    },
+    "desirability.input": {
+      "additionalProperties": false,
+      "description": "The arguments of desirability(specs, responses), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "responses": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "specs": {
+          "items": {
+            "$ref": "#/$defs/ResponseSpecInput"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "specs",
+        "responses"
+      ],
+      "type": "object"
+    },
+    "desirability.output": {
+      "$ref": "#/$defs/DesirabilityResultDto"
+    },
+    "doe_anova.input": {
+      "additionalProperties": false,
+      "description": "The arguments of doe_anova(design, responses, factor_names, effect_names), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "design": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "effect_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "factor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "responses": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "design",
+        "responses",
+        "factor_names",
+        "effect_names"
+      ],
+      "type": "object"
+    },
+    "doe_anova.output": {
+      "$ref": "#/$defs/DoeAnovaResultDto"
+    },
+    "estimate_effects.input": {
+      "additionalProperties": false,
+      "description": "The arguments of estimate_effects(design, responses, factor_names, max_order), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "design": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "factor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "max_order": {
+          "format": "double",
+          "type": "number"
+        },
+        "responses": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "design",
+        "responses",
+        "factor_names",
+        "max_order"
+      ],
+      "type": "object"
+    },
+    "estimate_effects.output": {
+      "$ref": "#/$defs/EstimateEffectsResultDto"
+    },
+    "fit_least_squares.input": {
+      "additionalProperties": false,
+      "description": "The arguments of fit_least_squares(design, responses, factor_names, effect_names), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "design": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "effect_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "factor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "responses": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "design",
+        "responses",
+        "factor_names",
+        "effect_names"
+      ],
+      "type": "object"
+    },
+    "fit_least_squares.output": {
+      "$ref": "#/$defs/LeastSquaresFitDto"
+    },
+    "fit_rsm.input": {
+      "additionalProperties": false,
+      "description": "The arguments of fit_rsm(design, responses, factor_names), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "design": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "factor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "responses": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "design",
+        "responses",
+        "factor_names"
+      ],
+      "type": "object"
+    },
+    "fit_rsm.output": {
+      "$ref": "#/$defs/RsmModelDto"
+    },
+    "fractional_factorial.input": {
+      "additionalProperties": false,
+      "description": "The arguments of fractional_factorial(k, p), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "p": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "k",
+        "p"
+      ],
+      "type": "object"
+    },
+    "fractional_factorial.output": {
+      "$ref": "#/$defs/DesignMatrixDto"
+    },
+    "fractional_factorial_info.input": {
+      "additionalProperties": false,
+      "description": "The arguments of fractional_factorial_info(k, p), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "p": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "k",
+        "p"
+      ],
+      "type": "object"
+    },
+    "fractional_factorial_info.output": {
+      "$ref": "#/$defs/FractionalInfoDto"
+    },
+    "full_factorial.input": {
+      "additionalProperties": false,
+      "description": "The arguments of full_factorial(k), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "k"
+      ],
+      "type": "object"
+    },
+    "full_factorial.output": {
+      "$ref": "#/$defs/DesignMatrixDto"
+    },
+    "optimize_desirability.input": {
+      "additionalProperties": false,
+      "description": "The arguments of optimize_desirability(specs, candidates), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "candidates": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "specs": {
+          "items": {
+            "$ref": "#/$defs/ResponseSpecInput"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "specs",
+        "candidates"
+      ],
+      "type": "object"
+    },
+    "optimize_desirability.output": {
+      "$ref": "#/$defs/DesirabilityOptimumDto"
+    },
+    "plackett_burman.input": {
+      "additionalProperties": false,
+      "description": "The arguments of plackett_burman(k), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "k"
+      ],
+      "type": "object"
+    },
+    "plackett_burman.output": {
+      "$ref": "#/$defs/DesignMatrixDto"
+    },
+    "rsm_predict.input": {
+      "additionalProperties": false,
+      "description": "The arguments of rsm_predict(coefficients, factor_count, coded), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "coded": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "coefficients": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "factor_count": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "coefficients",
+        "factor_count",
+        "coded"
+      ],
+      "type": "object"
+    },
+    "rsm_predict.output": {
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "type": "array"
+    },
+    "signal_to_noise.input": {
+      "additionalProperties": false,
+      "description": "The arguments of signal_to_noise(responses, goal), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "goal": {
+          "enum": [
+            "LargerIsBetter",
+            "SmallerIsBetter",
+            "NominalIsBest"
+          ],
+          "type": "string"
+        },
+        "responses": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "responses",
+        "goal"
+      ],
+      "type": "object"
+    },
+    "signal_to_noise.output": {
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "type": "array"
+    },
+    "simplex_centroid.input": {
+      "additionalProperties": false,
+      "description": "The arguments of simplex_centroid(q), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "q": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "q"
+      ],
+      "type": "object"
+    },
+    "simplex_centroid.output": {
+      "$ref": "#/$defs/DesignMatrixDto"
+    },
+    "simplex_lattice.input": {
+      "additionalProperties": false,
+      "description": "The arguments of simplex_lattice(q, m), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "m": {
+          "format": "double",
+          "type": "number"
+        },
+        "q": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "q",
+        "m"
+      ],
+      "type": "object"
+    },
+    "simplex_lattice.output": {
+      "$ref": "#/$defs/DesignMatrixDto"
+    },
+    "standard_fractions.input": {
+      "additionalProperties": false,
+      "description": "The arguments of standard_fractions(), by name; the WebAssembly function takes them in that order.",
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "standard_fractions.output": {
+      "items": {
+        "$ref": "#/$defs/FractionalInfoDto"
+      },
+      "type": "array"
+    },
+    "steepest_ascent.input": {
+      "additionalProperties": false,
+      "description": "The arguments of steepest_ascent(coefficients, factor_count, n_steps, step_size), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "coefficients": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "factor_count": {
+          "format": "double",
+          "type": "number"
+        },
+        "n_steps": {
+          "format": "double",
+          "type": "number"
+        },
+        "step_size": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "coefficients",
+        "factor_count",
+        "n_steps",
+        "step_size"
+      ],
+      "type": "object"
+    },
+    "steepest_ascent.output": {
+      "$ref": "#/$defs/SteepestAscentResultDto"
+    },
+    "taguchi_array.input": {
+      "additionalProperties": false,
+      "description": "The arguments of taguchi_array(name, k), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "enum": [
+            "L4",
+            "L8",
+            "L9",
+            "L12",
+            "L16",
+            "L18",
+            "L27"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "k"
+      ],
+      "type": "object"
+    },
+    "taguchi_array.output": {
+      "$ref": "#/$defs/DesignMatrixDto"
+    },
+    "two_level_factorial_power.input": {
+      "additionalProperties": false,
+      "description": "The arguments of two_level_factorial_power(k, p, n_replicates, effect_size, sigma, alpha, model_terms), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "alpha": {
+          "format": "double",
+          "type": "number"
+        },
+        "effect_size": {
+          "format": "double",
+          "type": "number"
+        },
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "model_terms": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "enum": [
+                "main_effects",
+                "two_factor",
+                "full"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A number of model terms, a named model, or absent for the full model."
+        },
+        "n_replicates": {
+          "format": "double",
+          "type": "number"
+        },
+        "p": {
+          "format": "double",
+          "type": "number"
+        },
+        "sigma": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "k",
+        "p",
+        "n_replicates",
+        "effect_size",
+        "sigma",
+        "alpha"
+      ],
+      "type": "object"
+    },
+    "two_level_factorial_power.output": {
+      "$ref": "#/$defs/PowerDto"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "u-doe WebAssembly operations"
+}

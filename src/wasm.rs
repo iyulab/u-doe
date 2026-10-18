@@ -69,6 +69,7 @@ impl WireCode {
 /// A refusal reason: the `code` an `Error` carries and the fields that can
 /// stand beside it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 struct RefusalCode {
     code: String,
@@ -78,6 +79,7 @@ struct RefusalCode {
 /// A violation a checker reports. This package has no checker; the type is
 /// here so every engine's [`Codes`] has one shape.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 struct ViolationCode {
     code: String,
@@ -88,6 +90,7 @@ struct ViolationCode {
 /// What this package can answer with besides a result: every refusal
 /// `code`, and no violations -- it has no checker.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 struct Codes {
     refusals: Vec<RefusalCode>,
@@ -533,6 +536,7 @@ fn whole(
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct DesignMatrixDto {
     data: Vec<Vec<f64>>,
@@ -556,6 +560,7 @@ impl From<crate::design::DesignMatrix> for DesignMatrixDto {
 
 /// A design with the block each run was built in.
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct ClassifiedDesignDto {
     data: Vec<Vec<f64>>,
@@ -565,6 +570,7 @@ struct ClassifiedDesignDto {
     /// One per row of `data`: `"factorial"`, `"axial"` or `"center"` for a
     /// central composite design, `"edge"` or `"center"` for Box-Behnken.
     #[tsify(type = "(\"factorial\" | \"axial\" | \"center\" | \"edge\")[]")]
+    #[cfg_attr(test, schemars(schema_with = "card_schema::point_types"))]
     point_types: Vec<String>,
 }
 
@@ -586,6 +592,7 @@ impl From<crate::design::ClassifiedDesign> for ClassifiedDesignDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct FractionalInfoDto {
     k: usize,
@@ -608,6 +615,7 @@ impl From<crate::design::factorial::FractionalInfo> for FractionalInfoDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct EffectRowDto {
     name: String,
@@ -619,6 +627,7 @@ struct EffectRowDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct DoeAnovaResultDto {
     effects: Vec<EffectRowDto>,
@@ -634,6 +643,7 @@ struct DoeAnovaResultDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct LeastSquaresTermDto {
     name: String,
@@ -649,6 +659,7 @@ struct LeastSquaresTermDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct LeastSquaresFitDto {
     intercept: f64,
@@ -663,6 +674,7 @@ struct LeastSquaresFitDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct CurvatureDto {
     sum_of_squares: f64,
@@ -672,6 +684,7 @@ struct CurvatureDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct PureErrorDto {
     sum_of_squares: f64,
@@ -681,6 +694,65 @@ struct PureErrorDto {
 // ---------------------------------------------------------------------------
 // Design generation
 // ---------------------------------------------------------------------------
+
+/// `ccd`'s `design_type` names.
+const ALPHA_TYPES: [(&str, crate::design::ccd::AlphaType); 3] = [
+    ("FaceCentered", crate::design::ccd::AlphaType::FaceCentered),
+    ("Rotatable", crate::design::ccd::AlphaType::Rotatable),
+    ("Inscribed", crate::design::ccd::AlphaType::Inscribed),
+];
+
+/// `signal_to_noise`'s `goal` names.
+const SN_GOALS: [(&str, crate::analysis::taguchi_sn::SnGoal); 3] = [
+    (
+        "LargerIsBetter",
+        crate::analysis::taguchi_sn::SnGoal::LargerIsBetter,
+    ),
+    (
+        "SmallerIsBetter",
+        crate::analysis::taguchi_sn::SnGoal::SmallerIsBetter,
+    ),
+    (
+        "NominalIsBest",
+        crate::analysis::taguchi_sn::SnGoal::NominalIsBest,
+    ),
+];
+
+/// A desirability `goal` names.
+const GOALS: [(&str, crate::optimization::desirability::GoalType); 3] = [
+    (
+        "Maximize",
+        crate::optimization::desirability::GoalType::Maximize,
+    ),
+    (
+        "Minimize",
+        crate::optimization::desirability::GoalType::Minimize,
+    ),
+    (
+        "Target",
+        crate::optimization::desirability::GoalType::Target,
+    ),
+];
+
+/// `two_level_factorial_power`'s named `model_terms`.
+const POWER_MODELS: [(&str, crate::power::PowerModel); 3] = [
+    ("main_effects", crate::power::PowerModel::MainEffects),
+    ("two_factor", crate::power::PowerModel::TwoFactor),
+    ("full", crate::power::PowerModel::Full),
+];
+
+/// The value `table` gives `name`, or `unknown_option` at `parameter` listing
+/// the table's names -- the parser and its refusal read one list.
+fn named<T: Copy>(parameter: &str, name: &str, table: &[(&str, T)]) -> Result<T, WireError> {
+    table
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, v)| *v)
+        .ok_or_else(|| {
+            let expected: Vec<&str> = table.iter().map(|(n, _)| *n).collect();
+            WireError::unknown_option(parameter, name, &expected)
+        })
+}
 
 /// Generate a 2^k full factorial design.
 ///
@@ -719,18 +791,7 @@ pub fn ccd(
 ) -> Result<JsValue, JsValue> {
     let k = whole(k, "k", 2, Some(6)).map_err(js_err)?;
     let n_center = whole(n_center, "n_center", 1, None).map_err(js_err)?;
-    let alpha_type = match design_type {
-        "FaceCentered" => crate::design::ccd::AlphaType::FaceCentered,
-        "Rotatable" => crate::design::ccd::AlphaType::Rotatable,
-        "Inscribed" => crate::design::ccd::AlphaType::Inscribed,
-        other => {
-            return Err(js_err(WireError::unknown_option(
-                "design_type",
-                other,
-                &["FaceCentered", "Rotatable", "Inscribed"],
-            )))
-        }
-    };
+    let alpha_type = named("design_type", design_type, &ALPHA_TYPES).map_err(js_err)?;
     let design = crate::design::ccd::ccd_design(k, alpha_type, n_center).map_err(js_err)?;
     to_js(&ClassifiedDesignDto::from(design))
 }
@@ -954,18 +1015,7 @@ pub fn signal_to_noise(
 ) -> Result<JsValue, JsValue> {
     let responses: Vec<Vec<f64>> = from_js(responses, "responses")?;
 
-    let sn_goal = match goal {
-        "LargerIsBetter" => crate::analysis::taguchi_sn::SnGoal::LargerIsBetter,
-        "SmallerIsBetter" => crate::analysis::taguchi_sn::SnGoal::SmallerIsBetter,
-        "NominalIsBest" => crate::analysis::taguchi_sn::SnGoal::NominalIsBest,
-        other => {
-            return Err(js_err(WireError::unknown_option(
-                "goal",
-                other,
-                &["LargerIsBetter", "SmallerIsBetter", "NominalIsBest"],
-            )))
-        }
-    };
+    let sn_goal = named("goal", goal, &SN_GOALS).map_err(js_err)?;
 
     let sn_values =
         crate::analysis::taguchi_sn::signal_to_noise(&responses, sn_goal).map_err(js_err)?;
@@ -1083,6 +1133,7 @@ pub fn simplex_centroid(q: f64) -> Result<JsValue, JsValue> {
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct EffectEstimateDto {
     name: String,
@@ -1093,6 +1144,7 @@ struct EffectEstimateDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct HalfNormalPointDto {
     term_index: usize,
@@ -1101,6 +1153,7 @@ struct HalfNormalPointDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct LenthDto {
     pse: f64,
@@ -1110,6 +1163,7 @@ struct LenthDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct EstimateEffectsResultDto {
     effects: Vec<EffectEstimateDto>,
@@ -1202,6 +1256,7 @@ pub fn estimate_effects(
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct RsmModelDto {
     coefficients: Vec<f64>,
@@ -1309,6 +1364,7 @@ pub fn rsm_predict(
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct AscentStepDto {
     coded: Vec<f64>,
@@ -1316,6 +1372,7 @@ struct AscentStepDto {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct SteepestAscentResultDto {
     steps: Vec<AscentStepDto>,
@@ -1378,9 +1435,11 @@ fn default_importance() -> f64 {
 /// five. A field the goal does not read is refused (`invalid_option`), not
 /// ignored -- it used to be required and then ignored.
 #[derive(serde::Deserialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 struct ResponseSpecInput {
     #[tsify(type = "\"Maximize\" | \"Minimize\" | \"Target\"")]
+    #[cfg_attr(test, schemars(schema_with = "card_schema::goal"))]
     goal: String,
     #[serde(default)]
     #[tsify(optional, type = "number")]
@@ -1400,6 +1459,7 @@ struct ResponseSpecInput {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct DesirabilityResultDto {
     individual: Vec<f64>,
@@ -1420,18 +1480,7 @@ fn parse_response_specs(
         .into_iter()
         .enumerate()
         .map(|(index, input)| {
-            let goal = match input.goal.as_str() {
-                "Maximize" => GoalType::Maximize,
-                "Minimize" => GoalType::Minimize,
-                "Target" => GoalType::Target,
-                other => {
-                    return Err(js_err(WireError::unknown_option(
-                        "goal",
-                        other,
-                        &["Maximize", "Minimize", "Target"],
-                    )))
-                }
-            };
+            let goal = named("goal", &input.goal, &GOALS).map_err(js_err)?;
             // The fields this goal's curve has: each one present, every
             // other one absent.
             let (lower, upper, s2) = (input.lower, input.upper, input.s2);
@@ -1536,6 +1585,7 @@ pub fn desirability(
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum DesirabilityOptimumDto {
@@ -1640,6 +1690,7 @@ pub fn optimize_desirability(
 
 /// The power calculation and what it was made from.
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[tsify(missing_as_null)]
 struct PowerDto {
     /// The power of the two-sided t test of one effect, in `[0, 1]`.
@@ -1754,16 +1805,7 @@ fn power_model_of(arg: ModelArg) -> Result<crate::power::PowerModel, WireError> 
     match arg {
         ModelArg::Absent => Ok(PowerModel::Full),
         ModelArg::Number(count) => whole(count, "model_terms", 1, None).map(PowerModel::Terms),
-        ModelArg::Text(name) => match name.as_str() {
-            "main_effects" => Ok(PowerModel::MainEffects),
-            "two_factor" => Ok(PowerModel::TwoFactor),
-            "full" => Ok(PowerModel::Full),
-            other => Err(WireError::unknown_option(
-                "model_terms",
-                other,
-                &["main_effects", "two_factor", "full"],
-            )),
-        },
+        ModelArg::Text(name) => named("model_terms", &name, &POWER_MODELS),
         ModelArg::Other => Err(WireError::malformed_input(
             "model_terms",
             "model_terms must be a number of terms or one of \"main_effects\", \
@@ -2188,5 +2230,218 @@ mod code_catalog_tests {
             .chain(catalog.violations.iter().map(|v| v.code.clone()))
             .collect();
         assert_eq!(documented, published);
+    }
+}
+
+/// The closed string vocabularies of the binding, as JSON Schema built from
+/// the tables it parses and prints them from (the engine card's schemas;
+/// tests only).
+#[cfg(test)]
+mod card_schema {
+    use schemars::{Schema, SchemaGenerator};
+
+    use crate::design::PointType;
+    use crate::engine_card::string_enum;
+
+    pub(super) fn names<T>(table: &[(&'static str, T)]) -> Schema {
+        string_enum(table.iter().map(|(n, _)| *n))
+    }
+
+    pub(super) fn point_types(_: &mut SchemaGenerator) -> Schema {
+        let all = [
+            PointType::Factorial,
+            PointType::Axial,
+            PointType::Center,
+            PointType::Edge,
+        ];
+        // A new variant fails to compile here until the list above has it.
+        for t in all {
+            match t {
+                PointType::Factorial | PointType::Axial | PointType::Center | PointType::Edge => {}
+            }
+        }
+        let item = string_enum(all.iter().map(|t| t.name())).to_value();
+        Schema::try_from(serde_json::json!({ "type": "array", "items": item }))
+            .expect("an object is a schema")
+    }
+
+    pub(super) fn goal(_: &mut SchemaGenerator) -> Schema {
+        names(&super::GOALS)
+    }
+}
+
+#[cfg(test)]
+mod engine_card_tests {
+    //! The engine card's operations are this binding's exports, and the
+    //! schemas it points at are generated from the types they read and return.
+
+    use super::*;
+    use crate::engine_card::{arg, optional, string_enum, Schemas};
+
+    fn schemas() -> Schemas {
+        let s = Schemas::new();
+        let num = || s.of::<f64>();
+        let numbers = || s.of::<Vec<f64>>();
+        let matrix = || s.of::<Vec<Vec<f64>>>();
+        let names = || s.of::<Vec<String>>();
+        let design = || s.of::<DesignMatrixDto>();
+        for id in ["full_factorial", "definitive_screening", "plackett_burman"] {
+            s.op(id, vec![arg("k", num())], design());
+        }
+        s.op(
+            "ccd",
+            vec![
+                arg("k", num()),
+                arg("design_type", card_schema::names(&ALPHA_TYPES)),
+                arg("n_center", num()),
+            ],
+            s.of::<ClassifiedDesignDto>(),
+        );
+        s.op(
+            "box_behnken",
+            vec![arg("k", num()), arg("n_center", num())],
+            s.of::<ClassifiedDesignDto>(),
+        );
+        s.op(
+            "taguchi_array",
+            vec![
+                arg(
+                    "name",
+                    string_enum(crate::design::taguchi::ARRAY_NAMES.iter().copied()),
+                ),
+                arg("k", num()),
+            ],
+            design(),
+        );
+        s.op(
+            "fractional_factorial",
+            vec![arg("k", num()), arg("p", num())],
+            design(),
+        );
+        s.op(
+            "fractional_factorial_info",
+            vec![arg("k", num()), arg("p", num())],
+            s.of::<FractionalInfoDto>(),
+        );
+        s.op(
+            "standard_fractions",
+            vec![],
+            s.of::<Vec<FractionalInfoDto>>(),
+        );
+        s.op(
+            "simplex_lattice",
+            vec![arg("q", num()), arg("m", num())],
+            design(),
+        );
+        s.op("simplex_centroid", vec![arg("q", num())], design());
+        let data = || {
+            vec![
+                arg("design", matrix()),
+                arg("responses", numbers()),
+                arg("factor_names", names()),
+            ]
+        };
+        let mut anova = data();
+        anova.push(arg("effect_names", names()));
+        s.op("doe_anova", anova, s.of::<DoeAnovaResultDto>());
+        let mut fit = data();
+        fit.push(arg("effect_names", names()));
+        s.op("fit_least_squares", fit, s.of::<LeastSquaresFitDto>());
+        s.op(
+            "signal_to_noise",
+            vec![
+                arg("responses", matrix()),
+                arg("goal", card_schema::names(&SN_GOALS)),
+            ],
+            numbers(),
+        );
+        let mut effects = data();
+        effects.push(arg("max_order", num()));
+        s.op(
+            "estimate_effects",
+            effects,
+            s.of::<EstimateEffectsResultDto>(),
+        );
+        s.op("fit_rsm", data(), s.of::<RsmModelDto>());
+        s.op(
+            "rsm_predict",
+            vec![
+                arg("coefficients", numbers()),
+                arg("factor_count", num()),
+                arg("coded", numbers()),
+            ],
+            numbers(),
+        );
+        s.op(
+            "steepest_ascent",
+            vec![
+                arg("coefficients", numbers()),
+                arg("factor_count", num()),
+                arg("n_steps", num()),
+                arg("step_size", num()),
+            ],
+            s.of::<SteepestAscentResultDto>(),
+        );
+        s.op(
+            "desirability",
+            vec![
+                arg("specs", s.of::<Vec<ResponseSpecInput>>()),
+                arg("responses", numbers()),
+            ],
+            s.of::<DesirabilityResultDto>(),
+        );
+        s.op(
+            "optimize_desirability",
+            vec![
+                arg("specs", s.of::<Vec<ResponseSpecInput>>()),
+                arg("candidates", numbers()),
+            ],
+            s.of::<DesirabilityOptimumDto>(),
+        );
+        let model = schemars::Schema::try_from(serde_json::json!({
+            "description": "A number of model terms, a named model, or absent for the full model.",
+            "anyOf": [
+                { "type": "integer", "minimum": 1 },
+                card_schema::names(&POWER_MODELS).to_value(),
+                { "type": "null" }
+            ]
+        }))
+        .expect("an object is a schema");
+        s.op(
+            "two_level_factorial_power",
+            vec![
+                arg("k", num()),
+                arg("p", num()),
+                arg("n_replicates", num()),
+                arg("effect_size", num()),
+                arg("sigma", num()),
+                arg("alpha", num()),
+                optional("model_terms", model),
+            ],
+            s.of::<PowerDto>(),
+        );
+        s
+    }
+
+    #[test]
+    fn the_schemas_are_generated_from_the_binding_types() {
+        schemas().check("u-doe WebAssembly operations");
+    }
+
+    #[test]
+    fn every_export_is_a_card_operation_with_its_arguments() {
+        let s = schemas();
+        s.check_exports(include_str!("wasm.rs"));
+        s.check_card();
+    }
+
+    /// No operation reads a clock or draws a random number, so each returns
+    /// the same result for the same arguments.
+    #[test]
+    fn the_crate_reads_no_clock_and_no_randomness() {
+        assert_eq!(
+            crate::engine_card::clock_and_entropy_uses(),
+            Vec::<(String, &str)>::new()
+        );
     }
 }

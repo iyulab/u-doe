@@ -20,6 +20,9 @@ pub mod power;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
+#[cfg(all(test, feature = "wasm"))]
+mod engine_card;
+
 // The README's Rust examples are the first code most users copy, so they are
 // compiled and run with the doc-tests. Without this they were checked by
 // nothing.

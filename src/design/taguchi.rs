@@ -142,7 +142,7 @@ const L27_COLS: &[&[u8]] = &[
 ];
 
 /// Names of the arrays in [`ARRAYS`], in the same order.
-const ARRAY_NAMES: &[&str] = &["L4", "L8", "L9", "L12", "L16", "L18", "L27"];
+pub(crate) const ARRAY_NAMES: &[&str] = &["L4", "L8", "L9", "L12", "L16", "L18", "L27"];
 
 const ARRAYS: &[ArraySpec] = &[
     ArraySpec {

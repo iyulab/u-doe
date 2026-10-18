@@ -1,0 +1,776 @@
+{
+  "$schema": "scripts/engine-card/engine-card.schema.json",
+  "card_version": 1,
+  "engine": {
+    "id": "u-doe",
+    "summary": "Design of experiments: generates factorial, fractional factorial, screening, response-surface, Taguchi and mixture designs, analyses two-level experiments (effects, ANOVA, least squares with Type III sums of squares), fits and explores second-order response surfaces, scores multiple responses by desirability and computes the power of a factorial test.",
+    "version": "0.25.0",
+    "license": "MIT",
+    "repository": "https://github.com/iyulab/u-doe"
+  },
+  "surfaces": [
+    {
+      "kind": "crate",
+      "name": "u-doe",
+      "package_version": "0.25.0",
+      "engine_version": "0.25.0",
+      "error_shape": "Err(DoeError), whose variant names the reason and holds the values behind it."
+    },
+    {
+      "kind": "npm",
+      "name": "@iyulab/u-doe",
+      "package_version": "0.25.0",
+      "engine_version": "0.25.0",
+      "wasm": true,
+      "note": "Native JS values in and out, typed in the .d.ts; an absent value in a result is null. Bundler and Node targets; no bundler-less browser build.",
+      "error_shape": "A thrown Error whose code property is the code, with the fields (parameter, index, min, max, got, expected, ...) as its other properties."
+    }
+  ],
+  "errors": {
+    "shape": "A refusal carries a stable snake_case 'code' and the fields listed for that code.",
+    "source": {
+      "catalog": "code_catalog in src/wasm.rs, read off the crate's DoeError variants and the binding's own reasons; published as codes() in WebAssembly. What each code means is tabled in README.md, which a test holds equal to the catalog.",
+      "test": "src/wasm.rs::code_catalog_tests::the_readme_documents_every_code_and_no_other"
+    }
+  },
+  "operations": [
+    {
+      "id": "full_factorial",
+      "summary": "The 2^k full factorial design for 2 to 7 factors. Returns the coded design matrix with factor names, run and factor counts.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/full_factorial.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/full_factorial.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(k · 2^k)."
+      }
+    },
+    {
+      "id": "ccd",
+      "summary": "A central composite design for 2 to 6 factors: face-centered, rotatable or inscribed, with n_center center runs; each row is labelled factorial, axial or center. Returns the coded design matrix with factor names, run and factor counts.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/ccd.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/ccd.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(k · (2^k + 2k + n_center))."
+      }
+    },
+    {
+      "id": "box_behnken",
+      "summary": "A Box-Behnken design for 3, 4 or 5 factors with n_center center runs; each row is labelled edge or center. Returns the coded design matrix with factor names, run and factor counts.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/box_behnken.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/box_behnken.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "taguchi_array",
+      "summary": "A Taguchi orthogonal array (L4, L8, L9, L12, L16, L18 or L27), using its first k columns. Returns the coded design matrix with factor names, run and factor counts.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/taguchi_array.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/taguchi_array.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "definitive_screening",
+      "summary": "A definitive screening design for 2 to 12 factors. Returns the coded design matrix with factor names, run and factor counts.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/definitive_screening.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/definitive_screening.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "doe_anova",
+      "summary": "ANOVA of a balanced two-level experiment for the named effects: sums of squares, F tests, R^2, fitted values and residuals, a curvature test when the design has center points and pure error when design points repeat.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/doe_anova.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/doe_anova.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "fit_least_squares",
+      "summary": "A least-squares fit of two-level data that need not be balanced (missing runs, unequal replication), with Type III sums of squares, coefficients, standard errors, t and F tests, fitted values and residuals.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/fit_least_squares.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/fit_least_squares.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "signal_to_noise",
+      "summary": "Taguchi signal-to-noise ratios in dB, one per run, from its replicate measurements, for a larger-is-better, smaller-is-better or nominal-is-best goal.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/signal_to_noise.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/signal_to_noise.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "fractional_factorial",
+      "summary": "A 2^(k-p) fractional factorial design from the standard generators (Montgomery 2019, Table 8.14), for the (k, p) combinations that table lists. Returns the coded design matrix with factor names, run and factor counts.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/fractional_factorial.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/fractional_factorial.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "fractional_factorial_info",
+      "summary": "The resolution, defining relation and generators of the fraction fractional_factorial(k, p) builds, so the alias structure can be derived without a published table.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/fractional_factorial_info.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/fractional_factorial_info.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "standard_fractions",
+      "summary": "Every 2^(k-p) fraction fractional_factorial can build, in ascending (k, p) order, each with its resolution, defining relation and generators.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/standard_fractions.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/standard_fractions.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "plackett_burman",
+      "summary": "A Plackett-Burman screening design for 1 to 19 factors, in the smallest run count N (a multiple of 4) with N - 1 >= k. Returns the coded design matrix with factor names, run and factor counts.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/plackett_burman.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/plackett_burman.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "simplex_lattice",
+      "summary": "The {q, m} simplex lattice design for a q-component mixture: every run's proportions are multiples of 1/m summing to 1, C(q + m - 1, m) runs. Returns the coded design matrix with factor names, run and factor counts.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/simplex_lattice.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/simplex_lattice.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "simplex_centroid",
+      "summary": "The simplex centroid design for a q-component mixture: the centroid of every non-empty subset of components, 2^q - 1 runs. Returns the coded design matrix with factor names, run and factor counts.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/simplex_centroid.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/simplex_centroid.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "estimate_effects",
+      "summary": "Main effects and interactions up to max_order of a two-level factorial experiment, with sums of squares, percent contribution, half-normal plot points and Lenth's pseudo standard error and margin of error.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/estimate_effects.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/estimate_effects.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "fit_rsm",
+      "summary": "A second-order response surface fitted by ordinary least squares: intercept, linear, quadratic and two-factor interaction coefficients with their term names and R^2.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/fit_rsm.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/fit_rsm.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "rsm_predict",
+      "summary": "Predictions of a fitted response surface at a batch of coded points, given row-major.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/rsm_predict.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/rsm_predict.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n · k^2) for n points and k factors."
+      }
+    },
+    {
+      "id": "steepest_ascent",
+      "summary": "The path of steepest ascent of a fitted response surface from the design center, in n_steps steps of step_size coded units.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/steepest_ascent.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/steepest_ascent.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "desirability",
+      "summary": "Derringer-Suich desirability of observed responses: each response's desirability for its maximize, minimize or target goal, and the importance-weighted geometric mean of them.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/desirability.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/desirability.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "optimize_desirability",
+      "summary": "The candidate response vector with the highest overall desirability, or, when every candidate scores 0, the responses that no candidate brings within their limits.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/optimize_desirability.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/optimize_desirability.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    },
+    {
+      "id": "two_level_factorial_power",
+      "summary": "The power of the two-sided t test of one effect in a 2^(k-p) factorial design with n_replicates replicates, from the noncentral t distribution with the fitted model's error degrees of freedom; reports the runs, the model terms and the error degrees of freedom used.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/two_level_factorial_power.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/two_level_factorial_power.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none"
+      }
+    }
+  ]
+}
