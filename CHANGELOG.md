@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `definitive_screening` for odd `k` (3, 5, 7, 9, 11) returned `2k+1` runs whose
+  main-effect columns were correlated (up to 0.75 for `k = 5`), so it was not a
+  definitive screening design: the construction needs a conference matrix, and an
+  odd order has none. Odd `k` now takes the conference matrix of order `k+1` and
+  drops its last column (the fake-factor construction of Jones & Nachtsheim,
+  2011), which keeps every main effect orthogonal to the others and to every
+  quadratic and two-factor-interaction column. The run count for odd `k` is
+  `2k+3`; even `k` is unchanged.
+
 ## [0.25.1] - 2026-10-20
 
 Depends on u-numflow 0.15.

@@ -837,7 +837,7 @@ pub fn taguchi_array(
     to_js(&DesignMatrixDto::from(design))
 }
 
-/// Generate a Definitive Screening Design (DSD).
+/// Generate a Definitive Screening Design (DSD): `2k+1` runs for even `k`, `2k+3` for odd `k`.
 ///
 /// Returns `{ data: [[f64]], factor_names: [str], run_count: usize, factor_count: usize }`.
 ///

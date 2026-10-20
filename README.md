@@ -126,7 +126,7 @@ println!("Required replicates: {n:?}");
 | CCD | `ccd(k, alpha, n_center)` | RSM, k = 2..6 |
 | Box-Behnken | `box_behnken(k, n_center)` | RSM, k = 3/4/5 |
 | Taguchi | `taguchi_array(name, k)` | Robust design, L4–L27 |
-| DSD | `definitive_screening(k)` | Screening + quadratic, k = 2..12, 2k+1 runs |
+| DSD | `definitive_screening(k)` | Screening + quadratic, k = 2..12, 2k+1 runs (2k+3 for odd k) |
 | Simplex Lattice | `simplex_lattice(q, m)` | Mixture, q = 2..12, degree m = 1..10 |
 | Simplex Centroid | `simplex_centroid(q)` | Mixture, q = 2..12, 2^q − 1 subset centroids |
 
@@ -304,7 +304,7 @@ Get a Taguchi orthogonal array. `name`: `"L4"` | `"L8"` | `"L9"` | `"L12"` | `"L
 
 #### `definitive_screening(k) -> DesignMatrix`
 
-Generate a Definitive Screening Design (k = 2..12).
+Generate a Definitive Screening Design (k = 2..12): `2k+1` runs for even `k`, `2k+3` for odd `k`. Main effects are orthogonal to each other and to every quadratic and two-factor-interaction column.
 
 
 #### `simplex_lattice(q, m) -> DesignMatrix`

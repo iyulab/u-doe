@@ -63,7 +63,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The design is every combination of the two levels exactly once (2^k distinct rows) and every effect -- each non-empty product of columns -- sums to zero.",
+            "reference_kind": "literature",
+            "reference": "The definition of a two-level full factorial (Montgomery 2019, ch. 6)",
+            "method": "for k = 2..7 encodes each row as a bit pattern and compares the set with 0..2^k; for k <= 5 sums every column product",
+            "tolerance": "1e-9 (absolute)",
+            "test": "tests/design_definitions.rs::full_factorial_is_every_combination_and_every_effect_is_balanced"
+          }
+        ],
+        "limits": [
+          "Restates the definition; row order (Yates) is not checked."
+        ]
       },
       "performance": {
         "status": "none",
@@ -99,7 +112,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The cube, star and centre blocks have the defined coordinates (cube +-1 or +-1/alpha, star +-alpha on one axis, centre 0), the run count is 2^k + 2k + n_center, and the rotatable and inscribed designs satisfy Box and Hunter's moment conditions (odd moments zero, [iiii] = 3[iijj]) while the face-centred one does not.",
+            "reference_kind": "literature",
+            "reference": "Box & Hunter (1957), On the Experimental Attainment of Optimum Conditions; Box & Wilson (1951)",
+            "method": "for k = 2..6, n_center 1 and 3, all three alpha types, builds the moments from the rows",
+            "tolerance": "1e-9 (absolute), 1e-8 (relative) on the fourth moments",
+            "test": "tests/design_definitions.rs::ccd_blocks_have_the_defined_coordinates_and_rotatable_alpha_satisfies_box_hunter"
+          }
+        ],
+        "limits": [
+          "Alpha is compared with (2^k)^(1/4) as the formula; orthogonal-blocking alphas are not offered."
+        ]
       },
       "performance": {
         "status": "none",
@@ -135,7 +161,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Every pair of factors takes the four sign combinations +-1 exactly once with the other factors at 0, the run count is 4*C(k,2) + n_center, and the columns are pairwise orthogonal.",
+            "reference_kind": "literature",
+            "reference": "Box & Behnken (1960), Some New Three Level Designs for the Study of Quantitative Variables",
+            "method": "for k = 3..5 and several centre counts, collects the (pair, sign) combinations of the edge rows",
+            "tolerance": "1e-9 (absolute)",
+            "test": "tests/design_definitions.rs::box_behnken_is_every_pair_at_four_sign_combinations"
+          }
+        ],
+        "limits": [
+          "k = 4 and 5 use every pair (the block structure the paper tabulates for k = 4 is not reproduced); rotatability is not claimed."
+        ]
       },
       "performance": {
         "status": "none"
@@ -205,7 +244,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The design is a fold-over with a centre run (2k+1 runs for even k, 2k+3 for odd k); every main effect is orthogonal to every other main effect and to every quadratic and two-factor-interaction column.",
+            "reference_kind": "literature",
+            "reference": "Jones & Nachtsheim (2011), A Class of Three-Level Designs for Definitive Screening in the Presence of Second-Order Effects, J. Quality Technology 43(1)",
+            "method": "for k = 2..12 checks the fold-over pairing, the zero pattern of the conference rows and all the inner products",
+            "tolerance": "1e-9 (absolute)",
+            "test": "tests/design_definitions.rs::definitive_screening_is_a_fold_over_with_main_effects_clear_of_second_order_terms"
+          }
+        ],
+        "limits": [
+          "The conference matrices are tabulated for orders up to 12, so k stops at 12; it found that odd k had correlated main effects (corrected in the same release)."
+        ]
       },
       "performance": {
         "status": "none"
