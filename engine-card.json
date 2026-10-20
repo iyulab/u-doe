@@ -209,7 +209,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Each array (L4, L8, L9, L12, L16, L18, L27) at its full column count is an orthogonal array of strength two: for every pair of columns each pair of levels appears the same number of times; the levels are -1/+1 or -1/0/+1, and k columns are the leading k.",
+            "reference_kind": "literature",
+            "reference": "Taguchi (1987), System of Experimental Design; Rao (1947), Factorial experiments derivable from combinatorial arrangements of arrays",
+            "method": "for each array counts every level pair in every column pair",
+            "tolerance": "exact (counts)",
+            "test": "tests/design_generators.rs::taguchi_arrays_are_orthogonal_arrays_of_strength_two"
+          }
+        ],
+        "limits": [
+          "The column arrangement (which column holds which interaction) is the module's, not checked against the printed tables; L12, L18 and L27 were corrected in the same release."
+        ]
       },
       "performance": {
         "status": "none"
@@ -436,7 +449,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The matrix has 2^(k-p) distinct runs at +-1 with balanced, orthogonal main-effect columns; the set of column products equal to the all-ones column (the defining contrast subgroup, 2^p - 1 words) is exactly the words of the reported defining relation, the reported resolution is the shortest of them, and every generator equation holds row by row.",
+            "reference_kind": "literature",
+            "reference": "Box, Hunter & Hunter (2005), Statistics for Experimenters, 2nd ed., sec. 6.5; Montgomery (2019), table of standard fractions",
+            "method": "for every standard fraction enumerates the 2^k - 1 column subsets of the matrix and compares them with the printed relation",
+            "tolerance": "exact (products of +-1)",
+            "test": "tests/design_generators.rs::fractional_factorial_info_describes_the_matrix_it_comes_with"
+          }
+        ],
+        "limits": [
+          "Only the standard fractions (k = 4..7); the choice of generators is the published one, not checked against the table."
+        ]
       },
       "performance": {
         "status": "none"
@@ -471,7 +497,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The matrix has 2^(k-p) distinct runs at +-1 with balanced, orthogonal main-effect columns; the set of column products equal to the all-ones column (the defining contrast subgroup, 2^p - 1 words) is exactly the words of the reported defining relation, the reported resolution is the shortest of them, and every generator equation holds row by row.",
+            "reference_kind": "literature",
+            "reference": "Box, Hunter & Hunter (2005), Statistics for Experimenters, 2nd ed., sec. 6.5; Montgomery (2019), table of standard fractions",
+            "method": "for every standard fraction enumerates the 2^k - 1 column subsets of the matrix and compares them with the printed relation",
+            "tolerance": "exact (products of +-1)",
+            "test": "tests/design_generators.rs::fractional_factorial_info_describes_the_matrix_it_comes_with"
+          }
+        ],
+        "limits": [
+          "Words and resolution are derived from the matrix; the alias structure beyond the defining relation is not enumerated."
+        ]
       },
       "performance": {
         "status": "none"
@@ -506,7 +545,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The list is in ascending (k, p) order and every entry describes the matrix fractional_factorial builds for it (resolution, defining relation, generators).",
+            "reference_kind": "literature",
+            "reference": "Box, Hunter & Hunter (2005), Statistics for Experimenters, 2nd ed., sec. 6.5; Montgomery (2019), table of standard fractions",
+            "method": "for every standard fraction enumerates the 2^k - 1 column subsets of the matrix and compares them with the printed relation",
+            "tolerance": "exact (products of +-1)",
+            "test": "tests/design_generators.rs::fractional_factorial_info_describes_the_matrix_it_comes_with"
+          }
+        ],
+        "limits": [
+          "The table of fractions itself is the published set; it is not extended."
+        ]
       },
       "performance": {
         "status": "none"
@@ -541,7 +593,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "For every k = 1..19 the run count is the smallest of 8, 12, 16, 20 above k, the columns are +-1, balanced and pairwise orthogonal, and with k = N-1 the matrix plus the all-ones column is a Hadamard matrix (orthogonal rows too).",
+            "reference_kind": "literature",
+            "reference": "Plackett & Burman (1946), The Design of Optimum Multifactorial Experiments, Biometrika 33(4)",
+            "method": "for every k builds the column sums and inner products; for k = N-1 the row inner products",
+            "tolerance": "1e-9 (absolute)",
+            "test": "tests/design_generators.rs::plackett_burman_columns_are_balanced_and_orthogonal_in_the_smallest_run_size"
+          }
+        ],
+        "limits": [
+          "Orthogonality only; the row order is the cyclic one of the paper and is not compared with a table."
+        ]
       },
       "performance": {
         "status": "none"
@@ -576,7 +641,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The design is every composition of m into q non-negative integer parts divided by m: C(q+m-1, m) distinct points, each summing to 1.",
+            "reference_kind": "literature",
+            "reference": "Scheffe (1958), Experiments with Mixtures, J. Royal Statistical Society B 20",
+            "method": "for q = 2..8, m = 1..6 compares the rows with the integer compositions and the point count with the binomial",
+            "tolerance": "1e-12 (sum), 1e-9 (multiple of 1/m)",
+            "test": "tests/design_generators.rs::mixture_designs_are_the_compositions_and_the_subset_centroids"
+          }
+        ],
+        "limits": [
+          "Row order is not compared."
+        ]
       },
       "performance": {
         "status": "none"
@@ -611,7 +689,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The design is the equal-share mixture of every non-empty subset of the q components: 2^q - 1 distinct points, each summing to 1.",
+            "reference_kind": "literature",
+            "reference": "Scheffe (1963), The Simplex-Centroid Design for Experiments with Mixtures, J. Royal Statistical Society B 25",
+            "method": "for q = 2..12 reads the support of each row and checks its shares",
+            "tolerance": "1e-12 (absolute)",
+            "test": "tests/design_generators.rs::mixture_designs_are_the_compositions_and_the_subset_centroids"
+          }
+        ],
+        "limits": [
+          "Row order is not compared."
+        ]
       },
       "performance": {
         "status": "none"

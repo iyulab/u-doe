@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `taguchi_array` returned arrays that were not orthogonal for `L12`, `L18` and
+  `L27`: 16 of the 55 column pairs of `L12`, 16 of the 28 of `L18` and 9 of the
+  78 of `L27` did not hold every level combination equally often (two `L27`
+  columns were the same factor relabelled), so effects estimated from them were
+  confounded. The three tables are replaced by orthogonal arrays of strength two
+  (`L27` columns are the linear forms `u*a + v*b + w*c` mod 3 of the run digits,
+  one per point of the projective plane over GF(3)); `L4`, `L8`, `L9` and `L16`
+  were already orthogonal. The leading columns of `L27` and the first two of
+  `L12` keep their values; every other changed column changes the runs, so a
+  design built from the old tables should be rebuilt.
 - `definitive_screening` for odd `k` (3, 5, 7, 9, 11) returned `2k+1` runs whose
   main-effect columns were correlated (up to 0.75 for `k = 5`), so it was not a
   definitive screening design: the construction needs a conference matrix, and an
