@@ -4,7 +4,7 @@
   "engine": {
     "id": "u-doe",
     "summary": "Design of experiments: generates factorial, fractional factorial, screening, response-surface, Taguchi and mixture designs, analyses two-level experiments (effects, ANOVA, least squares with Type III sums of squares), fits and explores second-order response surfaces, scores multiple responses by desirability and computes the power of a factorial test.",
-    "version": "0.25.0",
+    "version": "0.25.1",
     "license": "MIT",
     "repository": "https://github.com/iyulab/u-doe"
   },
@@ -12,15 +12,15 @@
     {
       "kind": "crate",
       "name": "u-doe",
-      "package_version": "0.25.0",
-      "engine_version": "0.25.0",
+      "package_version": "0.25.1",
+      "engine_version": "0.25.1",
       "error_shape": "Err(DoeError), whose variant names the reason and holds the values behind it."
     },
     {
       "kind": "npm",
       "name": "@iyulab/u-doe",
-      "package_version": "0.25.0",
-      "engine_version": "0.25.0",
+      "package_version": "0.25.1",
+      "engine_version": "0.25.1",
       "wasm": true,
       "note": "Native JS values in and out, typed in the .d.ts; an absent value in a result is null. Bundler and Node targets; no bundler-less browser build.",
       "error_shape": "A thrown Error whose code property is the code, with the fields (parameter, index, min, max, got, expected, ...) as its other properties."
