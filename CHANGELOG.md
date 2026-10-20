@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-10-20
+
+Depends on u-numflow 0.15.
+
 ### Fixed
 
 - `taguchi_array` returned arrays that were not orthogonal for `L12`, `L18` and
