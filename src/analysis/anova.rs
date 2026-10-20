@@ -6,6 +6,7 @@
 //! Reference: Montgomery, D.C. (2019). *Introduction to Statistical Quality
 //! Control*, 8th ed., Section 6.4. Wiley.
 
+use crate::analysis::has_no_variation;
 use crate::{design::DesignMatrix, error::DoeError};
 
 /// One row in the ANOVA table.
@@ -338,7 +339,7 @@ pub fn doe_anova(
         }
     });
 
-    let r_squared = if total_ss > 1e-12 {
+    let r_squared = if !has_no_variation(total_ss, responses) {
         (model_ss + curvature_ss) / total_ss
     } else {
         0.0

@@ -16,6 +16,7 @@ use std::ops::Bound;
 
 use u_numflow::matrix::Matrix;
 
+use crate::analysis::has_no_variation;
 use crate::{design::DesignMatrix, error::DoeError};
 
 /// Fitted second-order response surface model.
@@ -170,7 +171,7 @@ pub fn fit_rsm(design: &DesignMatrix, responses: &[f64]) -> Result<RsmModel, Doe
         })
         .sum();
 
-    let r_squared = if ss_tot > 1e-12 {
+    let r_squared = if !has_no_variation(ss_tot, responses) {
         1.0 - ss_res / ss_tot
     } else {
         1.0

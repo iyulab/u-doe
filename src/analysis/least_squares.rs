@@ -21,6 +21,7 @@
 use u_numflow::matrix::Matrix;
 
 use crate::analysis::anova::f_pvalue;
+use crate::analysis::has_no_variation;
 use crate::{design::DesignMatrix, error::DoeError};
 
 /// One term of a least-squares fit.
@@ -237,13 +238,14 @@ pub fn fit_least_squares(
         })
         .collect();
 
-    let r_squared = if total_ss > 1e-12 {
+    let r_squared = if !has_no_variation(total_ss, responses) {
         1.0 - residual_ss / total_ss
     } else {
         0.0
     };
     let total_df = n - 1;
-    let r_squared_adj = if residual_df > 0 && total_df > 0 && total_ss > 1e-12 {
+    let r_squared_adj = if residual_df > 0 && total_df > 0 && !has_no_variation(total_ss, responses)
+    {
         1.0 - (residual_ss / residual_df as f64) / (total_ss / total_df as f64)
     } else {
         r_squared

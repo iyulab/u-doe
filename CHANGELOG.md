@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   true ratio is about 29 dB), and a model whose linear coefficients were all
   below 1e-12 gave an empty path. The variance is now judged against the square
   of the mean, and the coefficients against the model's largest.
+- R-squared, adjusted R-squared and each effect's share of the total no longer
+  depend on the unit of the response (`doe_anova`, `fit_least_squares`,
+  `fit_rsm`, `estimate_effects`): a total sum of squares under 1e-12 was read as
+  no variation, so a response in units near 1e-9 got an exact fit (or none)
+  whatever the data said. It is now judged against the size of the responses.
+- A target `ResponseSpec` no longer scores every value within 1e-12 of the
+  target as exactly on target; with limits in units of 1e-13 that was every
+  value in range. The ramps already give 1 at the target.
 
 ## [0.25.0] - 2026-10-17
 

@@ -273,8 +273,6 @@ impl ResponseSpec {
             GoalType::Target => {
                 if y < self.lower || y > self.upper {
                     0.0
-                } else if (y - self.target).abs() < 1e-12 {
-                    1.0
                 } else if y <= self.target {
                     ((y - self.lower) / (self.target - self.lower)).powf(self.s1)
                 } else {
@@ -895,5 +893,116 @@ mod tests {
             overall_desirability(&[unweighted], &[5.0]),
             Err(DoeError::NoWeightedResponse)
         );
+    }
+}
+
+/// The individual and overall desirabilities against the Derringer-Suich
+/// formulas in NumPy: a maximize (importance 2), a minimize (1) and a target
+/// goal with unequal exponents (3), six points -- inside the ramps, on the
+/// limits, and outside, where one vetoes the whole design. And a target
+/// specification in units of 1e-13, where a fixed tolerance around the target
+/// would call every value on target.
+#[cfg(test)]
+mod numpy_reference {
+    use super::*;
+
+    fn close(got: f64, want: f64) -> bool {
+        (got - want).abs() <= 1e-12 * want.abs().max(1.0)
+    }
+
+    #[test]
+    fn individual_and_overall_desirability_reproduce_the_formulas() {
+        let specs = [
+            ResponseSpec::maximize(20.0, 80.0, 1.5)
+                .and_then(|s| s.with_importance(2.0))
+                .expect("valid"),
+            ResponseSpec::minimize(5.0, 25.0, 0.7).expect("valid"),
+            ResponseSpec::target(40.0, 50.0, 60.0, 2.0, 0.5)
+                .and_then(|s| s.with_importance(3.0))
+                .expect("valid"),
+        ];
+        let cases: [([f64; 3], [f64; 3], f64); 6] = [
+            (
+                [55.0, 12.0, 47.0],
+                [0.445528192565151, 0.739672290708735, 0.49],
+                0.508428236549523,
+            ),
+            (
+                [79.9, 5.0, 50.0],
+                [0.9975010419562, 1.0, 1.0],
+                0.999166319154791,
+            ),
+            (
+                [30.0, 10.0, 45.0],
+                [0.0680413817439772, 0.817603768177013, 0.25],
+                0.197386839456212,
+            ),
+            (
+                [85.0, 24.0, 58.0],
+                [1.0, 0.122822802611579, 0.447213595499958],
+                0.471488024155257,
+            ),
+            ([60.0, 26.0, 50.0], [0.544331053951817, 0.0, 1.0], 0.0),
+            (
+                [50.0, 15.0, 41.5],
+                [0.353553390593274, 0.615572206672458, 0.0225],
+                0.0978264052324173,
+            ),
+        ];
+        for (y, d, overall) in cases {
+            for ((spec, y), want) in specs.iter().zip(y).zip(d) {
+                assert!(
+                    close(spec.desirability(y), want),
+                    "d({y}): got {}, want {want}",
+                    spec.desirability(y)
+                );
+            }
+            let got = overall_desirability(&specs, &y).expect("one response per specification");
+            assert!(close(got, overall), "{y:?}: got {got}, want {overall}");
+        }
+    }
+
+    #[test]
+    fn a_target_specification_does_not_depend_on_the_unit() {
+        let spec = ResponseSpec::target(0.0, 4e-13, 1e-12, 1.0, 1.0).expect("valid");
+        assert!(close(spec.desirability(1e-13), 0.25));
+        assert!(close(spec.desirability(7e-13), 0.5));
+        assert_eq!(spec.desirability(4e-13), 1.0);
+    }
+
+    #[test]
+    fn the_search_returns_the_candidate_with_the_largest_overall_desirability() {
+        let specs = [
+            ResponseSpec::maximize(20.0, 80.0, 1.5)
+                .and_then(|s| s.with_importance(2.0))
+                .expect("valid"),
+            ResponseSpec::minimize(5.0, 25.0, 0.7).expect("valid"),
+            ResponseSpec::target(40.0, 50.0, 60.0, 2.0, 0.5)
+                .and_then(|s| s.with_importance(3.0))
+                .expect("valid"),
+        ];
+        // The six points of the first test; the second has the largest D.
+        let candidates = vec![
+            vec![55.0, 12.0, 47.0],
+            vec![79.9, 5.0, 50.0],
+            vec![30.0, 10.0, 45.0],
+            vec![85.0, 24.0, 58.0],
+            vec![60.0, 26.0, 50.0],
+            vec![50.0, 15.0, 41.5],
+        ];
+        match optimize_desirability(&specs, &candidates).expect("valid") {
+            DesirabilityOptimum::Best {
+                index,
+                overall,
+                individual,
+            } => {
+                assert_eq!(index, 1);
+                assert!(close(overall, 0.999166319154791));
+                for (got, want) in individual.iter().zip([0.9975010419562, 1.0, 1.0]) {
+                    assert!(close(*got, want));
+                }
+            }
+            other => panic!("expected a best candidate, got {other:?}"),
+        }
     }
 }

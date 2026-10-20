@@ -213,7 +213,7 @@ pub(crate) fn contrast_effects(
         // SS = n * effect² / 4
         let ss = (n as f64) * effect * effect / 4.0;
 
-        let pct = if ss_total > 1e-12 {
+        let pct = if !crate::analysis::has_no_variation(ss_total, responses) {
             ss / ss_total * 100.0
         } else {
             0.0
