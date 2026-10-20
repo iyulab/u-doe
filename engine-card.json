@@ -336,7 +336,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The larger-is-better, smaller-is-better and nominal-is-best ratios equal the formulas -10 log10 mean(1/y^2), -10 log10 mean(y^2) and 10 log10(mean^2 / sample variance); the nominal ratio does not change when the responses are in another unit.",
+            "reference_kind": "literature",
+            "reference": "Taguchi (1987), System of Experimental Design, the three ratios as defined, in NumPy 2.4.6",
+            "method": "compares the ratios of three runs of four replicates for each goal with the reference's, and the nominal ratio of the same replicates scaled by 1e-9",
+            "tolerance": "1e-9 (relative)",
+            "test": "src/analysis/taguchi_sn.rs::numpy_reference::larger_smaller_and_nominal_reproduce_numpy"
+          }
+        ],
+        "limits": [
+          "The reference restates the published formulas; zero-variance runs (reported as 0 dB) are covered by unit tests."
+        ]
       },
       "performance": {
         "status": "none"
@@ -629,7 +642,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The second-order model's coefficients (intercept, linear, squared, interaction terms in the documented order) and R^2 equal an ordinary least-squares fit on the same model matrix.",
+            "reference_kind": "reference_implementation",
+            "reference": "statsmodels 0.15.0 OLS on NumPy 2.4.6 (seeded generator)",
+            "method": "compares the ten coefficients and R^2 of a three-factor rotatable central composite design (17 runs) with the reference's",
+            "tolerance": "1e-9 (relative)",
+            "test": "src/analysis/rsm.rs::statsmodels_reference::coefficients_and_r_squared_reproduce_statsmodels"
+          }
+        ],
+        "limits": [
+          "One well-conditioned coded design; a design that makes the normal equations nearly singular is covered by unit tests only."
+        ]
       },
       "performance": {
         "status": "none"
@@ -664,7 +690,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The prediction at a point is the model row times the coefficients.",
+            "reference_kind": "reference_implementation",
+            "reference": "statsmodels 0.15.0 OLS on NumPy 2.4.6 (seeded generator)",
+            "method": "compares the prediction of the fitted model at three points (one outside the factorial cube) with the reference's",
+            "tolerance": "1e-9 (relative)",
+            "test": "src/analysis/rsm.rs::statsmodels_reference::predictions_are_the_model_row_times_the_coefficients"
+          }
+        ],
+        "limits": [
+          "Predictions only; the model is the one fit_rsm fits."
+        ]
       },
       "performance": {
         "status": "none",
@@ -700,7 +739,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The path's step j is j times the step size times the linear coefficients divided by the largest of them, for a model measured in any unit.",
+            "reference_kind": "reference_implementation",
+            "reference": "statsmodels 0.15.0 OLS on NumPy 2.4.6 (seeded generator); the path restates the documented formula",
+            "method": "compares the coded factor values of three steps with the reference's, and with the same model scaled by 1e-14",
+            "tolerance": "1e-9 (relative)",
+            "test": "src/analysis/rsm.rs::statsmodels_reference::the_ascent_path_follows_the_linear_coefficients"
+          }
+        ],
+        "limits": [
+          "The reference restates the documented direction; whether steepest ascent is the right search direction for a model is not checked."
+        ]
       },
       "performance": {
         "status": "none"

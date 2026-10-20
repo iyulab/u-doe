@@ -223,7 +223,14 @@ pub fn steepest_ascent(
 
     // Normalise by largest absolute coefficient
     let max_abs = linear.iter().map(|b| b.abs()).fold(0.0_f64, f64::max);
-    if max_abs < 1e-12 || n_steps == 0 {
+    // "Essentially zero" is judged against the model's own size, not an absolute
+    // number: a response measured in small units has small coefficients all over.
+    let model_scale = model
+        .coefficients
+        .iter()
+        .map(|b| b.abs())
+        .fold(0.0_f64, f64::max);
+    if max_abs <= 1e-12 * model_scale || n_steps == 0 {
         return Ok(Vec::new());
     }
     let direction: Vec<f64> = linear.iter().map(|b| b / max_abs).collect();
@@ -580,6 +587,128 @@ mod tests {
                     index: None,
                 })
             );
+        }
+    }
+}
+
+/// The quadratic fit against statsmodels' OLS on the same model matrix
+/// (intercept, linear, squared, interaction columns): a rotatable central
+/// composite design of three factors with three centre points (17 runs),
+/// responses drawn from a known quadratic with a seeded NumPy generator. The
+/// steepest-ascent path is the documented one -- the linear coefficients
+/// divided by the largest of them, times the step number and the step size.
+#[cfg(test)]
+mod statsmodels_reference {
+    use super::*;
+
+    fn close(got: f64, want: f64) -> bool {
+        (got - want).abs() <= 1e-9 * want.abs().max(1.0)
+    }
+
+    fn model() -> RsmModel {
+        let design = DesignMatrix {
+            data: vec![
+                vec![-1.0, -1.0, -1.0],
+                vec![-1.0, -1.0, 1.0],
+                vec![-1.0, 1.0, -1.0],
+                vec![-1.0, 1.0, 1.0],
+                vec![1.0, -1.0, -1.0],
+                vec![1.0, -1.0, 1.0],
+                vec![1.0, 1.0, -1.0],
+                vec![1.0, 1.0, 1.0],
+                vec![1.682, 0.0, 0.0],
+                vec![-1.682, 0.0, 0.0],
+                vec![0.0, 1.682, 0.0],
+                vec![0.0, -1.682, 0.0],
+                vec![0.0, 0.0, 1.682],
+                vec![0.0, 0.0, -1.682],
+                vec![0.0, 0.0, 0.0],
+                vec![0.0, 0.0, 0.0],
+                vec![0.0, 0.0, 0.0],
+            ],
+            factor_names: vec!["A".into(), "B".into(), "C".into()],
+        };
+        let responses = [
+            39.694, 45.495, 31.816, 39.661, 47.861, 49.429, 43.12, 46.533, 50.517, 35.992, 39.784,
+            51.207, 44.884, 38.84, 50.37, 50.007, 49.694,
+        ];
+        fit_rsm(&design, &responses).expect("a valid fit")
+    }
+
+    #[test]
+    fn coefficients_and_r_squared_reproduce_statsmodels() {
+        let fit = model();
+        let want = [
+            50.0361487366269,
+            4.00549543396781,
+            -2.96981618725916,
+            2.10810405551283,
+            -2.43581406597687,
+            -1.64369608175278,
+            -2.92801589240795,
+            0.759375000000004,
+            -1.083125,
+            0.486125000000011,
+        ];
+        assert_eq!(fit.coefficients.len(), want.len());
+        for (i, (got, want)) in fit.coefficients.iter().zip(want).enumerate() {
+            assert!(
+                close(*got, want),
+                "coefficient {i}: got {got}, statsmodels {want}"
+            );
+        }
+        assert!(close(fit.r_squared, 0.992749199726259));
+    }
+
+    #[test]
+    fn predictions_are_the_model_row_times_the_coefficients() {
+        let fit = model();
+        let cases: [([f64; 3], f64); 3] = [
+            ([0.3, -0.4, 0.9], 50.9105362298137),
+            ([-1.0, 1.0, 0.0], 38.2219519676703),
+            ([1.682, 0.0, -0.5], 49.0070241471096),
+        ];
+        for (x, want) in cases {
+            let got = fit.predict(&x).expect("three coordinates");
+            assert!(close(got, want), "{x:?}: got {got}, statsmodels {want}");
+        }
+    }
+
+    #[test]
+    fn the_ascent_path_follows_the_linear_coefficients() {
+        let path = steepest_ascent(&model(), 3, 0.5).expect("a valid model");
+        let want: [[f64; 3]; 3] = [
+            [0.5, -0.37071770973376, 0.263151474051808],
+            [1.0, -0.74143541946752, 0.526302948103616],
+            [1.5, -1.11215312920128, 0.789454422155424],
+        ];
+        assert_eq!(path.len(), 3);
+        for (step, want) in path.iter().zip(want) {
+            for (got, want) in step.coded.iter().zip(want) {
+                assert!(
+                    close(*got, want),
+                    "step {}: got {got}, want {want}",
+                    step.step_number
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_ascent_path_does_not_depend_on_the_unit_of_the_response() {
+        let fit = model();
+        let tiny = RsmModel {
+            coefficients: fit.coefficients.iter().map(|b| b * 1e-14).collect(),
+            r_squared: fit.r_squared,
+            factor_count: fit.factor_count,
+        };
+        let want = steepest_ascent(&fit, 3, 0.5).expect("a valid model");
+        let got = steepest_ascent(&tiny, 3, 0.5).expect("a valid model");
+        assert_eq!(got.len(), want.len());
+        for (g, w) in got.iter().zip(&want) {
+            for (g, w) in g.coded.iter().zip(&w.coded) {
+                assert!(close(*g, *w), "got {g}, want {w}");
+            }
         }
     }
 }

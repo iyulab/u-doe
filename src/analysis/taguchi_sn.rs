@@ -104,7 +104,10 @@ pub fn signal_to_noise(responses: &[Vec<f64>], goal: SnGoal) -> Result<Vec<f64>,
                 let mean = run.iter().sum::<f64>() / r;
                 let var = run.iter().map(|&y| (y - mean).powi(2)).sum::<f64>() / (r - 1.0);
 
-                let sn = if var < 1e-15 {
+                // The ratio is dimensionless, so "no variance" is judged against
+                // the mean: a spread below 3e-8 of it is rounding noise, whatever
+                // the unit the responses are in.
+                let sn = if var <= 1e-15 * mean * mean {
                     // Degenerate: zero variance — return 0.0 dB
                     0.0
                 } else {
@@ -417,6 +420,78 @@ mod tests {
             (sn[0] - 20.0).abs() < 0.01,
             "NB reference: got {}, expected 20.0",
             sn[0]
+        );
+    }
+}
+
+/// The three ratios against NumPy on generated replicates (four per run), and
+/// the nominal-is-best ratio on the same replicates scaled by 1e-9 -- it is a
+/// ratio of `mean^2` to the variance, so the unit of measurement cannot change it.
+#[cfg(test)]
+mod numpy_reference {
+    use super::*;
+
+    fn close(got: f64, want: f64) -> bool {
+        (got - want).abs() <= 1e-9 * want.abs().max(1.0)
+    }
+
+    fn check(responses: &[[f64; 4]], goal: SnGoal, want: &[f64]) {
+        let responses: Vec<Vec<f64>> = responses.iter().map(|r| r.to_vec()).collect();
+        let got = signal_to_noise(&responses, goal).expect("valid replicates");
+        for (i, (got, want)) in got.iter().zip(want).enumerate() {
+            assert!(
+                close(*got, *want),
+                "{goal:?} run {i}: got {got}, NumPy {want}"
+            );
+        }
+    }
+
+    #[test]
+    fn larger_smaller_and_nominal_reproduce_numpy() {
+        check(
+            &[
+                [7.311, 8.787, 5.613, 2.157],
+                [5.794, 7.998, 3.693, 8.675],
+                [8.269, 4.062, 3.475, 5.369],
+            ],
+            SnGoal::LargerIsBetter,
+            &[11.57497127578, 14.8138023312149, 13.1710226489439],
+        );
+        check(
+            &[
+                [10.353, 9.867, 9.689, 10.407],
+                [9.863, 7.669, 11.328, 9.181],
+                [10.118, 8.601, 11.102, 11.733],
+            ],
+            SnGoal::SmallerIsBetter,
+            &[-20.0724052199473, -19.646210087393, -20.3868851722345],
+        );
+        check(
+            &[
+                [10.353, 9.867, 9.689, 10.407],
+                [9.863, 7.669, 11.328, 9.181],
+                [10.118, 8.601, 11.102, 11.733],
+            ],
+            SnGoal::NominalIsBest,
+            &[29.0451097287554, 15.9294396274031, 17.6319684483782],
+        );
+    }
+
+    #[test]
+    fn the_nominal_ratio_does_not_depend_on_the_unit() {
+        check(
+            &[
+                [1.0353e-08, 9.867000000000002e-09, 9.689e-09, 1.0407e-08],
+                [9.863e-09, 7.669e-09, 1.1328e-08, 9.181e-09],
+                [
+                    1.0118000000000002e-08,
+                    8.601000000000002e-09,
+                    1.1102e-08,
+                    1.1733000000000002e-08,
+                ],
+            ],
+            SnGoal::NominalIsBest,
+            &[29.0451097287554, 15.9294396274031, 17.6319684483782],
         );
     }
 }

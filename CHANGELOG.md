@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The nominal-is-best signal-to-noise ratio (`signal_to_noise`) and the
+  steepest-ascent path (`steepest_ascent`) no longer depend on the unit of the
+  response. Both compared against a fixed number: a run whose variance was below
+  1e-15 was reported as 0 dB (replicates near 1e-8 with a 10 % spread, whose
+  true ratio is about 29 dB), and a model whose linear coefficients were all
+  below 1e-12 gave an empty path. The variance is now judged against the square
+  of the mean, and the coefficients against the model's largest.
+
 ## [0.25.0] - 2026-10-17
 
 Depends on u-numflow 0.14.
