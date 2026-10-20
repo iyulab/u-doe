@@ -721,3 +721,51 @@ mod tests {
         );
     }
 }
+
+/// The power against SciPy's noncentral t: the two-sided test of one effect,
+/// whose standard error is `2 sigma / sqrt(runs)`, with `runs - 1 - terms`
+/// error degrees of freedom -- `nct.sf(crit, df, ncp) + nct.cdf(-crit, df, ncp)`.
+#[cfg(test)]
+mod scipy_reference {
+    use super::*;
+
+    /// `(k, p, replicates, effect, sigma, alpha, terms)`, power, runs, error df.
+    type Case = (
+        (usize, usize, usize, f64, f64, f64, usize),
+        f64,
+        usize,
+        usize,
+    );
+
+    #[test]
+    fn power_reproduces_the_noncentral_t() {
+        // (k, p, replicates, effect, sigma, alpha, terms), power, runs, error df
+        let cases: [Case; 7] = [
+            ((3, 0, 2, 2.0, 1.5, 0.05, 7), 0.648009710557495, 16, 8),
+            ((3, 0, 1, 2.0, 1.5, 0.05, 3), 0.305684951319576, 8, 4),
+            ((4, 0, 2, 1.0, 1.0, 0.05, 4), 0.77835379445989, 32, 27),
+            ((5, 1, 1, 1.5, 1.0, 0.01, 5), 0.473206208355665, 16, 10),
+            ((2, 0, 3, 0.8, 1.0, 0.1, 3), 0.355067149263984, 12, 8),
+            ((4, 1, 2, 2.0, 2.0, 0.05, 7), 0.421051938048382, 16, 8),
+            ((3, 0, 4, 0.5, 1.0, 0.05, 7), 0.27401960656955, 32, 24),
+        ];
+        for ((k, p, n, effect, sigma, alpha, terms), power, runs, df) in cases {
+            let a = two_level_factorial_analysis(
+                k,
+                p,
+                n,
+                effect,
+                sigma,
+                alpha,
+                PowerModel::Terms(terms),
+            )
+            .expect("a valid design");
+            assert_eq!((a.runs, a.error_df), (runs, df), "{k} {p} {n}");
+            assert!(
+                (a.power - power).abs() <= 1e-9,
+                "{k} {p} {n}: got {}, SciPy {power}",
+                a.power
+            );
+        }
+    }
+}

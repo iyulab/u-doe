@@ -915,3 +915,130 @@ mod tests {
         ));
     }
 }
+
+/// The balanced two-level analysis against statsmodels' OLS and
+/// `anova_lm(typ=3)`: a 2^3 run twice, the model A, B, C, A:B, A:C and B:C (the
+/// three-factor interaction left to the residual), responses drawn from a known
+/// model with a seeded NumPy generator. On balanced data the contrast formula
+/// and the regression give the same effects (twice the coefficient) and the
+/// same sums of squares.
+#[cfg(test)]
+mod statsmodels_reference {
+    use super::*;
+    use crate::analysis::effects::estimate_effects;
+
+    fn close(got: f64, want: f64) -> bool {
+        (got - want).abs() <= 1e-9 * want.abs().max(1.0)
+    }
+
+    #[test]
+    fn a_balanced_analysis_reproduces_statsmodels() {
+        let design = DesignMatrix {
+            data: vec![
+                vec![-1.0, -1.0, -1.0],
+                vec![1.0, -1.0, -1.0],
+                vec![-1.0, 1.0, -1.0],
+                vec![1.0, 1.0, -1.0],
+                vec![-1.0, -1.0, 1.0],
+                vec![1.0, -1.0, 1.0],
+                vec![-1.0, 1.0, 1.0],
+                vec![1.0, 1.0, 1.0],
+                vec![-1.0, -1.0, -1.0],
+                vec![1.0, -1.0, -1.0],
+                vec![-1.0, 1.0, -1.0],
+                vec![1.0, 1.0, -1.0],
+                vec![-1.0, -1.0, 1.0],
+                vec![1.0, -1.0, 1.0],
+                vec![-1.0, 1.0, 1.0],
+                vec![1.0, 1.0, 1.0],
+            ],
+            factor_names: vec!["A".into(), "B".into(), "C".into()],
+        };
+        let responses = [
+            19.05, 21.803, 14.119, 22.911, 22.213, 25.983, 12.298, 20.34, 20.182, 23.38, 14.73,
+            22.731, 22.202, 25.573, 14.278, 22.385,
+        ];
+        // name, effect, sum of squares, F, p
+        let terms: [(&str, f64, f64, f64, f64); 6] = [
+            (
+                "A",
+                5.75425,
+                132.44557225,
+                185.308186343051,
+                2.61251393490552e-07,
+            ),
+            (
+                "B",
+                -4.57425,
+                83.69505225,
+                117.100013800834,
+                1.84816009915841e-06,
+            ),
+            (
+                "C",
+                0.795749999999999,
+                2.53287224999999,
+                3.54381014716134,
+                0.0924365655158291,
+            ),
+            (
+                "A:B",
+                2.48125000000001,
+                24.6264062500001,
+                34.4554717897312,
+                0.000237800567348805,
+            ),
+            (
+                "A:C",
+                0.0682499999999993,
+                0.0186322499999996,
+                0.0260688854775228,
+                0.875298610636731,
+            ),
+            (
+                "B:C",
+                -2.09325,
+                17.52678225,
+                24.5221956159208,
+                0.000789144855768242,
+            ),
+        ];
+        let names = ["A", "B", "C", "A:B", "A:C", "B:C"];
+        let anova = doe_anova(&design, &responses, &names).expect("a valid analysis");
+        for (row, (name, _, ss, f, p)) in anova.effects.iter().zip(terms) {
+            assert_eq!(row.name, name);
+            assert!(
+                close(row.sum_of_squares, ss),
+                "{name} SS {}",
+                row.sum_of_squares
+            );
+            assert!(close(row.f_statistic.expect("residual df"), f), "{name} F");
+            assert!(close(row.p_value.expect("residual df"), p), "{name} p");
+        }
+        assert!(close(anova.residual_ss, 6.43258225));
+        assert_eq!(anova.residual_df, 9);
+        assert!(close(anova.total_ss, 267.27789975));
+        assert!(close(anova.r_squared, 0.975932981155506));
+        assert!(close(anova.r_squared_adj, 0.959888301925844));
+        for (got, want) in anova.fitted.iter().zip([
+            19.501375, 22.706125, 14.539125, 22.706375, 22.322125, 25.663375, 13.173375, 21.477125,
+            19.501375, 22.706125, 14.539125, 22.706375, 22.322125, 25.663375, 13.173375, 21.477125,
+        ]) {
+            assert!(close(*got, want), "fitted {got} vs {want}");
+        }
+
+        let effects = estimate_effects(&design, &responses, 2).expect("a valid estimate");
+        for (name, effect, ss, _, _) in terms {
+            let e = effects
+                .iter()
+                .find(|e| e.name == name)
+                .expect("the term is estimated");
+            assert!(close(e.estimate, effect), "{name} effect {}", e.estimate);
+            assert!(
+                close(e.sum_of_squares, ss),
+                "{name} effect SS {}",
+                e.sum_of_squares
+            );
+        }
+    }
+}

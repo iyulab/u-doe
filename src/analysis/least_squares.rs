@@ -549,3 +549,129 @@ mod tests {
         assert!(close(fit.r_squared, 1.0));
     }
 }
+
+/// Type III least squares against statsmodels' OLS and `anova_lm(typ=3)`, on
+/// an unbalanced two-level design: eight corners less two, three of the rest
+/// replicated, the model A, B, C and A:B. The responses are drawn from a known
+/// model with a seeded NumPy generator.
+#[cfg(test)]
+mod statsmodels_reference {
+    use super::*;
+
+    fn close(got: f64, want: f64) -> bool {
+        (got - want).abs() <= 1e-9 * want.abs().max(1.0)
+    }
+
+    #[test]
+    fn an_unbalanced_fit_reproduces_statsmodels() {
+        let design = DesignMatrix {
+            data: vec![
+                vec![-1.0, -1.0, -1.0],
+                vec![1.0, -1.0, -1.0],
+                vec![-1.0, 1.0, -1.0],
+                vec![-1.0, -1.0, 1.0],
+                vec![1.0, -1.0, 1.0],
+                vec![1.0, 1.0, 1.0],
+                vec![-1.0, -1.0, -1.0],
+                vec![-1.0, -1.0, -1.0],
+                vec![1.0, -1.0, 1.0],
+            ],
+            factor_names: vec!["A".into(), "B".into(), "C".into()],
+        };
+        let responses = [
+            9.881, 11.9, 4.167, 10.474, 13.549, 12.328, 9.01, 8.853, 13.484,
+        ];
+        let fit =
+            fit_least_squares(&design, &responses, &["A", "B", "C", "A:B"]).expect("a valid fit");
+        assert!(
+            close(fit.intercept, 9.786161764705883),
+            "intercept {}",
+            fit.intercept
+        );
+        // name, coefficient, standard error, t, Type III SS, F, p
+        let terms: [(&str, f64, f64, f64, f64, f64, f64); 4] = [
+            (
+                "A",
+                2.39674999999999,
+                0.204525455053169,
+                11.7185902330687,
+                22.9776422499999,
+                137.325357050572,
+                0.000303287891821598,
+            ),
+            (
+                "B",
+                -1.53866176470588,
+                0.164520207843679,
+                -9.3524180699301,
+                14.6353310708556,
+                87.467723754755,
+                0.00072787808654291,
+            ),
+            (
+                "C",
+                0.704882352941182,
+                0.171835752832631,
+                4.1020703859443,
+                2.81553507843141,
+                16.8269814512412,
+                0.0148279126984472,
+            ),
+            (
+                "A:B",
+                0.978867647058818,
+                0.171835752832631,
+                5.69653073311374,
+                5.42969726593133,
+                32.4504623933093,
+                0.00469210566782265,
+            ),
+        ];
+        for (t, (name, coefficient, se, tstat, ss, f, p)) in fit.terms.iter().zip(terms) {
+            assert_eq!(t.name, name);
+            assert!(
+                close(t.coefficient, coefficient),
+                "{name} coefficient {}",
+                t.coefficient
+            );
+            assert!(close(t.effect, 2.0 * coefficient), "{name} effect");
+            assert!(
+                close(t.std_error.expect("residual df"), se),
+                "{name} std error"
+            );
+            assert!(
+                close(t.t_statistic.expect("residual df"), tstat),
+                "{name} t"
+            );
+            assert!(
+                close(t.sum_of_squares, ss),
+                "{name} Type III SS {}",
+                t.sum_of_squares
+            );
+            assert!(close(t.f_statistic.expect("residual df"), f), "{name} F");
+            assert!(
+                close(t.p_value.expect("residual df"), p),
+                "{name} p {}",
+                t.p_value.unwrap()
+            );
+        }
+        assert!(close(fit.residual_ss, 0.669290588235294));
+        assert_eq!(fit.residual_df, 4);
+        assert!(close(fit.total_ss, 68.8446408888889));
+        assert!(close(fit.r_squared, 0.990278247085122));
+        assert!(close(fit.r_squared_adj, 0.980556494170244));
+        for (got, want) in fit.fitted.iter().zip([
+            9.20205882352941,
+            12.0378235294118,
+            4.16700000000001,
+            10.6118235294118,
+            13.4475882352941,
+            12.328,
+            9.20205882352941,
+            9.20205882352941,
+            13.4475882352941,
+        ]) {
+            assert!(close(*got, want), "fitted {got} vs {want}");
+        }
+    }
+}

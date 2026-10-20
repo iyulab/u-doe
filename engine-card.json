@@ -240,7 +240,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "On a balanced replicated 2^3 each requested effect's sum of squares, F and p-value, the residual sum of squares and degrees of freedom, total sum of squares, R^2, adjusted R^2 and fitted values equal an ordinary least-squares fit's (Type III).",
+            "reference_kind": "reference_implementation",
+            "reference": "statsmodels 0.15.0 OLS and anova_lm(typ=3) on NumPy 2.4.6 (seeded generator)",
+            "method": "compares those quantities for a six-term model on sixteen runs with the reference's",
+            "tolerance": "1e-9 (relative)",
+            "test": "src/analysis/anova.rs::statsmodels_reference::a_balanced_analysis_reproduces_statsmodels"
+          }
+        ],
+        "limits": [
+          "One balanced design; the centre-point curvature test and the pure-error split are not compared with a second implementation."
+        ]
       },
       "performance": {
         "status": "none"
@@ -275,7 +288,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "On an unbalanced two-level design (corners left out, others replicated) the intercept, each coefficient, its standard error and t, its Type III sum of squares, F and p-value, the residual sum of squares and degrees of freedom, R^2, adjusted R^2 and the fitted values equal an ordinary least-squares fit.",
+            "reference_kind": "reference_implementation",
+            "reference": "statsmodels 0.15.0 OLS and anova_lm(typ=3) on NumPy 2.4.6 (seeded generator)",
+            "method": "compares every reported quantity of a four-term model on nine runs with the reference's",
+            "tolerance": "1e-9 (relative)",
+            "test": "src/analysis/least_squares.rs::statsmodels_reference::an_unbalanced_fit_reproduces_statsmodels"
+          }
+        ],
+        "limits": [
+          "One design and model; aliased or rank-deficient requests, saturated models and a residual of exactly zero are covered by unit tests, not compared with the reference."
+        ]
       },
       "performance": {
         "status": "none"
@@ -555,7 +581,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "On a balanced replicated 2^3 each main effect and two-factor interaction equals twice the least-squares coefficient, and its sum of squares the Type III sum of squares.",
+            "reference_kind": "reference_implementation",
+            "reference": "statsmodels 0.15.0 OLS and anova_lm(typ=3) on NumPy 2.4.6 (seeded generator)",
+            "method": "compares the effect and the sum of squares of six terms with the reference's",
+            "tolerance": "1e-9 (relative)",
+            "test": "src/analysis/anova.rs::statsmodels_reference::a_balanced_analysis_reproduces_statsmodels"
+          }
+        ],
+        "limits": [
+          "One balanced design and orders up to 2; Lenth's margin of error and the half-normal coordinates are not compared."
+        ]
       },
       "performance": {
         "status": "none"
@@ -766,7 +805,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The power equals the two-sided noncentral-t power of one effect: standard error 2 sigma / sqrt(runs), runs - 1 - terms error degrees of freedom, noncentrality effect / standard error, with the run count and error degrees of freedom reported.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1: scipy.stats.t.ppf and scipy.stats.nct.sf / nct.cdf",
+            "method": "compares the power, the run count and the error degrees of freedom of seven designs (full and fractional, 2 to 5 factors) with the reference's",
+            "tolerance": "1e-9 (absolute)",
+            "test": "src/power.rs::scipy_reference::power_reproduces_the_noncentral_t"
+          }
+        ],
+        "limits": [
+          "The reference restates the formula the crate documents (the standard error of an effect from the run count), so it checks the noncentral t arithmetic and the degrees of freedom, not the choice of model; powers above 1 - 1e-16 are not compared."
+        ]
       },
       "performance": {
         "status": "none"
