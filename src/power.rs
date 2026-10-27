@@ -207,7 +207,7 @@ pub fn two_level_factorial_analysis(
 ///
 /// # Errors
 /// As [`two_level_factorial_power`] (except `NoErrorDegreesOfFreedom`), and
-/// [`DoeError::ParameterOutOfRange`] if `max_replicates` is 0 or unless
+/// [`DoeError::ParameterOutOfRange`] if `max_replicates` is not in `1..=MAX_REPLICATES` or unless
 /// `target_power` lies strictly between 0 and 1.
 ///
 /// # Examples
@@ -253,7 +253,7 @@ pub fn required_replicates(
 ///
 /// # Errors
 /// As [`two_level_factorial_power`] (except `NoErrorDegreesOfFreedom`), and
-/// [`DoeError::ParameterOutOfRange`] if `max_replicates` is 0.
+/// [`DoeError::ParameterOutOfRange`] if `max_replicates` is not in `1..=MAX_REPLICATES`.
 pub fn power_curve(
     k: usize,
     p: usize,
@@ -350,9 +350,19 @@ fn check_design(k: usize, p: usize) -> Result<(), DoeError> {
     Ok(())
 }
 
+/// Most replicates a search or a curve goes to: [`power_curve`] returns one
+/// point per count and [`required_replicates`] evaluates them in turn, so an
+/// unbounded `max_replicates` is unbounded memory or time. A two-level design
+/// replicated this often has its power at 1 for any effect worth detecting.
+pub const MAX_REPLICATES: usize = 10_000;
+
 fn check_max_replicates(max_replicates: usize) -> Result<(), DoeError> {
-    if max_replicates == 0 {
-        return Err(DoeError::count_out_of_range("max_replicates", 1.., 0));
+    if !(1..=MAX_REPLICATES).contains(&max_replicates) {
+        return Err(DoeError::count_out_of_range(
+            "max_replicates",
+            1..=MAX_REPLICATES,
+            max_replicates,
+        ));
     }
     Ok(())
 }
@@ -436,6 +446,26 @@ mod analysis_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A curve is one point per count and a search evaluates counts in turn:
+    /// an unbounded `max_replicates` was unbounded memory or time.
+    #[test]
+    fn max_replicates_is_bounded() {
+        for max in [0, MAX_REPLICATES + 1, usize::MAX] {
+            let e = power_curve(3, 0, 2.0, 1.0, 0.05, max, None).unwrap_err();
+            assert_eq!(
+                e,
+                DoeError::count_out_of_range("max_replicates", 1..=MAX_REPLICATES, max)
+            );
+        }
+        assert_eq!(
+            power_curve(2, 0, 1e-6, 1.0, 0.05, MAX_REPLICATES, None)
+                .unwrap()
+                .len(),
+            MAX_REPLICATES - 1,
+            "one replicate of the full model has no error df and is left out"
+        );
+    }
 
     fn power(k: usize, p: usize, n: usize, effect: f64, sigma: f64, alpha: f64) -> f64 {
         two_level_factorial_power(k, p, n, effect, sigma, alpha, None).expect("valid power inputs")
@@ -717,7 +747,7 @@ mod tests {
         );
         assert_eq!(
             power_curve(3, 0, 1.0, 1.0, 0.05, 0, None),
-            Err(range("max_replicates", 1, None, 0))
+            Err(range("max_replicates", 1, Some(MAX_REPLICATES), 0))
         );
     }
 }

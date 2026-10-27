@@ -20,11 +20,11 @@ use crate::error::DoeError;
 ///
 /// # Arguments
 /// * `k`        — Number of factors (3, 4, or 5)
-/// * `n_center` — Number of center point replicates (≥ 1)
+/// * `n_center` — Number of center point replicates (1 to [`MAX_CENTER_POINTS`](crate::design::MAX_CENTER_POINTS))
 ///
 /// # Errors
 ///
-/// Returns `Err` if `k` is not 3, 4, or 5, or if `n_center == 0`.
+/// Returns `Err` if `k` is not 3, 4, or 5, or if `n_center` is not in `1..=MAX_CENTER_POINTS`.
 ///
 /// # Examples
 ///
@@ -56,8 +56,12 @@ pub fn box_behnken_design(k: usize, n_center: usize) -> Result<ClassifiedDesign,
     if !matches!(k, 3..=5) {
         return Err(DoeError::count_out_of_range("k", 3..=5, k));
     }
-    if n_center == 0 {
-        return Err(DoeError::count_out_of_range("n_center", 1.., 0));
+    if !(1..=super::MAX_CENTER_POINTS).contains(&n_center) {
+        return Err(DoeError::count_out_of_range(
+            "n_center",
+            1..=super::MAX_CENTER_POINTS,
+            n_center,
+        ));
     }
 
     let pairs = bib_pairs(k);

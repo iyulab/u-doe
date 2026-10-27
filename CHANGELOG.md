@@ -14,6 +14,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reading a lock file -- which names the wrong version once the crate is linked
   from another package.
 
+### Fixed
+
+- `ccd` / `box_behnken` took any `n_center` and `power_curve` /
+  `required_replicates` any `max_replicates`: a large count is rows or curve
+  points to build, or powers to evaluate, so it exhausted memory or ran without
+  end before anything refused it. `n_center` is now `1..=1000`
+  (`design::MAX_CENTER_POINTS`) and `max_replicates` `1..=10000`
+  (`power::MAX_REPLICATES`), refused as `parameter_out_of_range` with those
+  bounds -- the WebAssembly binding reports the same `max` for a negative count.
+
+
 ## [0.25.2] - 2026-10-20
 
 Depends on u-numflow 0.15.

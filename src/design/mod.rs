@@ -10,6 +10,11 @@ pub mod taguchi;
 
 pub use dsd::definitive_screening;
 
+/// Most center points a design takes. A count is a number of rows to build,
+/// and an unbounded one exhausts memory before it is refused; center-point
+/// replicates beyond a few dozen add no information a design uses.
+pub const MAX_CENTER_POINTS: usize = 1_000;
+
 use crate::error::DoeError;
 
 /// The block of a response-surface design a run belongs to.

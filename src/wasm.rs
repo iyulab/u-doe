@@ -790,7 +790,13 @@ pub fn ccd(
     n_center: f64,
 ) -> Result<JsValue, JsValue> {
     let k = whole(k, "k", 2, Some(6)).map_err(js_err)?;
-    let n_center = whole(n_center, "n_center", 1, None).map_err(js_err)?;
+    let n_center = whole(
+        n_center,
+        "n_center",
+        1,
+        Some(crate::design::MAX_CENTER_POINTS),
+    )
+    .map_err(js_err)?;
     let alpha_type = named("design_type", design_type, &ALPHA_TYPES).map_err(js_err)?;
     let design = crate::design::ccd::ccd_design(k, alpha_type, n_center).map_err(js_err)?;
     to_js(&ClassifiedDesignDto::from(design))
@@ -808,7 +814,13 @@ pub fn ccd(
 #[wasm_bindgen(unchecked_return_type = "ClassifiedDesignDto")]
 pub fn box_behnken(k: f64, n_center: f64) -> Result<JsValue, JsValue> {
     let k = whole(k, "k", 3, Some(5)).map_err(js_err)?;
-    let n_center = whole(n_center, "n_center", 1, None).map_err(js_err)?;
+    let n_center = whole(
+        n_center,
+        "n_center",
+        1,
+        Some(crate::design::MAX_CENTER_POINTS),
+    )
+    .map_err(js_err)?;
     let design = crate::design::box_behnken::box_behnken_design(k, n_center).map_err(js_err)?;
     to_js(&ClassifiedDesignDto::from(design))
 }
@@ -2008,11 +2020,11 @@ mod dto_strictness_tests {
             same(neg("k", 1, Some(max)), taguchi_array(name, 0).unwrap_err());
         }
         same(
-            neg("n_center", 1, None),
+            neg("n_center", 1, Some(crate::design::MAX_CENTER_POINTS)),
             crate::design::ccd::ccd(2, AlphaType::FaceCentered, 0).unwrap_err(),
         );
         same(
-            neg("n_center", 1, None),
+            neg("n_center", 1, Some(crate::design::MAX_CENTER_POINTS)),
             crate::design::box_behnken::box_behnken(3, 0).unwrap_err(),
         );
         same(

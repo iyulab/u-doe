@@ -219,7 +219,7 @@ try {
 
 | `code` | Fields | Meaning |
 |---|---|---|
-| `parameter_out_of_range` | `parameter`, `min`, `max`, `exclusive_min`, `exclusive_max`, `index`, `got` | A numeric argument outside the range the function takes. `min` / `max` are closed bounds (`null` on a side that is open or unbounded); `exclusive_min` / `exclusive_max` appear only for an open end (`s1: 0` → `exclusive_min: 0`). Counts: a design's factor count `k` (or `q`) outside its generator's range — `full_factorial` 2–7, `ccd` 2–6, `box_behnken` 3–5, `definitive_screening` 2–12, `plackett_burman` 1–19, `taguchi_array` 1 to the array's columns, mixtures 2–12 — `n_center`, `max_order`, the lattice degree `m`, `factor_count`, power's `k`, `p`, `n_replicates`, `model_terms`; a negative count has the bounds of a too-small one (`k: -1` and `k: 0` both report `min: 2` for `full_factorial`; `min: 0` for a count with no lower check), and one above 2³² − 1 that `max`. Real settings: `s1`/`s2` and `effect_size`/`sigma` and `step_size` greater than 0, `importance` at least 0, `alpha` strictly between 0 and 1. `index` is present only for a setting of one spec — its position in `specs` |
+| `parameter_out_of_range` | `parameter`, `min`, `max`, `exclusive_min`, `exclusive_max`, `index`, `got` | A numeric argument outside the range the function takes. `min` / `max` are closed bounds (`null` on a side that is open or unbounded); `exclusive_min` / `exclusive_max` appear only for an open end (`s1: 0` → `exclusive_min: 0`). Counts: a design's factor count `k` (or `q`) outside its generator's range — `full_factorial` 2–7, `ccd` 2–6, `box_behnken` 3–5, `definitive_screening` 2–12, `plackett_burman` 1–19, `taguchi_array` 1 to the array's columns, mixtures 2–12 — `n_center` (1–1000), `max_order`, the lattice degree `m`, `factor_count`, power's `k`, `p`, `n_replicates`, `model_terms`; a negative count has the bounds of a too-small one (`k: -1` and `k: 0` both report `min: 2` for `full_factorial`; `min: 0` for a count with no lower check), and one above 2³² − 1 that `max`. Real settings: `s1`/`s2` and `effect_size`/`sigma` and `step_size` greater than 0, `importance` at least 0, `alpha` strictly between 0 and 1. `index` is present only for a setting of one spec — its position in `specs` |
 | `unsupported_fraction` | `k`, `p`, `supported` (`[[k, p], ...]`) | 2^(k-p) not in the standard table — see `standard_fractions()` |
 | `unknown_array` | `array`, `supported` | No Taguchi array of that name |
 | `unknown_option` | `parameter`, `got`, `expected` | A string argument (`goal`, `design_type`) that names no option |
@@ -288,14 +288,14 @@ Generate a Plackett-Burman screening design (k = 1..19).
 
 #### `ccd(k, design_type, n_center) -> ClassifiedDesign`
 
-Generate a Central Composite Design. `design_type`: `"FaceCentered"` | `"Rotatable"` | `"Inscribed"`. k = 2..6.
+Generate a Central Composite Design. `design_type`: `"FaceCentered"` | `"Rotatable"` | `"Inscribed"`. k = 2..6. `n_center` = 1..1000.
 The result is a design matrix plus `point_types`, one per row — `"factorial"`, `"axial"` or `"center"` —
 so a run sheet or a plot tells the blocks apart without guessing from the coordinates (an inscribed
 design's factorial level is not an integer). Rust: `ccd_design`.
 
 #### `box_behnken(k, n_center) -> ClassifiedDesign`
 
-Generate a Box-Behnken design (k = 3, 4, or 5). `point_types` is `"edge"` (an edge midpoint) or
+Generate a Box-Behnken design (k = 3, 4, or 5). `n_center` = 1..1000. `point_types` is `"edge"` (an edge midpoint) or
 `"center"` for each row. Rust: `box_behnken_design`.
 
 #### `taguchi_array(name, k) -> DesignMatrix`

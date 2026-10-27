@@ -54,11 +54,11 @@ pub fn rotatable_alpha(k: usize) -> f64 {
 /// # Arguments
 /// * `k`        — Number of factors (2..=6)
 /// * `alpha`    — Method for choosing the axial distance
-/// * `n_center` — Number of center point replicates (≥ 1)
+/// * `n_center` — Number of center point replicates (1 to [`MAX_CENTER_POINTS`](crate::design::MAX_CENTER_POINTS))
 ///
 /// # Errors
 ///
-/// Returns `Err` if `k < 2`, `k > 6`, or `n_center == 0`.
+/// Returns `Err` if `k < 2`, `k > 6`, or `n_center` is not in `1..=MAX_CENTER_POINTS`.
 ///
 /// # Examples
 ///
@@ -97,8 +97,12 @@ pub fn ccd_design(
     if !(2..=6).contains(&k) {
         return Err(DoeError::count_out_of_range("k", 2..=6, k));
     }
-    if n_center == 0 {
-        return Err(DoeError::count_out_of_range("n_center", 1.., 0));
+    if !(1..=super::MAX_CENTER_POINTS).contains(&n_center) {
+        return Err(DoeError::count_out_of_range(
+            "n_center",
+            1..=super::MAX_CENTER_POINTS,
+            n_center,
+        ));
     }
 
     let alpha_val = match alpha_type {
@@ -157,6 +161,24 @@ pub fn ccd_design(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `n_center` is a number of rows to build: unbounded, it exhausted memory
+    /// before anything refused it.
+    #[test]
+    fn n_center_is_bounded() {
+        use crate::design::MAX_CENTER_POINTS;
+        let too_many = MAX_CENTER_POINTS + 1;
+        assert_eq!(
+            ccd(2, AlphaType::FaceCentered, too_many).unwrap_err(),
+            DoeError::count_out_of_range("n_center", 1..=MAX_CENTER_POINTS, too_many)
+        );
+        assert_eq!(
+            crate::design::box_behnken::box_behnken_design(3, usize::MAX).unwrap_err(),
+            DoeError::count_out_of_range("n_center", 1..=MAX_CENTER_POINTS, usize::MAX)
+        );
+        let d = ccd(2, AlphaType::FaceCentered, MAX_CENTER_POINTS).unwrap();
+        assert_eq!(d.data.len(), 4 + 4 + MAX_CENTER_POINTS);
+    }
 
     /// The type of every run agrees with its coordinates: a center run is all
     /// zeros, an axial run has exactly one non-zero coordinate, a factorial
