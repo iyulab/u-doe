@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `VERSION`: the crate's own version (`CARGO_PKG_VERSION`) as a constant at the
+  crate root, so a consumer can report what it was built against without
+  reading a lock file -- which names the wrong version once the crate is linked
+  from another package.
+
 ## [0.25.2] - 2026-10-20
 
 Depends on u-numflow 0.15.

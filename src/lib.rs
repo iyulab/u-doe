@@ -10,6 +10,14 @@
 //! - [`coding`] — Actual ↔ coded variable transformations
 //! - [`error`] — Error types
 
+/// This crate's version, as published (`CARGO_PKG_VERSION`) — for a consumer
+/// that reports what it was built against without reading a lock file.
+///
+/// ```
+/// assert!(!u_doe::VERSION.is_empty());
+/// ```
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod analysis;
 pub mod coding;
 pub mod design;
