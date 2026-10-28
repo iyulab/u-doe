@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Depends on u-numflow 0.16.
+
 ## [0.25.3] - 2026-10-28
 
 ### Added
