@@ -89,3 +89,57 @@ fn desirability_pipeline() {
     let anova = doe_anova(&design, &y1, &["A", "B", "C"]).unwrap();
     assert!(anova.r_squared >= 0.0);
 }
+
+mod randomization {
+    use super::*;
+
+    #[test]
+    fn a_seed_gives_one_order_a_permutation_with_the_runs_of_the_design() {
+        let design = full_factorial(4).unwrap();
+        let a = design.randomized(7);
+        let b = design.randomized(7);
+        assert_eq!(a.run_order, b.run_order);
+        let mut sorted = a.run_order.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, (0..16).collect::<Vec<_>>());
+        for (i, &standard) in a.run_order.iter().enumerate() {
+            assert_eq!(a.design.data[i], design.data[standard]);
+        }
+        assert_eq!(a.design.factor_names, design.factor_names);
+        // Other seeds order the runs differently (16! orders: two seeds agreeing is not a coincidence).
+        let others = (8..16).filter(|&s| design.randomized(s).run_order != a.run_order);
+        assert!(others.count() >= 7);
+    }
+
+    /// Running in another order changes nothing about what the design says: the
+    /// effects of responses recorded in run order, put back in standard order,
+    /// are those of the standard-order experiment.
+    #[test]
+    fn the_effects_do_not_depend_on_the_order_the_runs_were_made_in() {
+        let design = full_factorial(3).unwrap();
+        // Responses in standard order: A = 4, B = -2, A:B = 1.5, plus a level.
+        let standard: Vec<f64> = design
+            .data
+            .iter()
+            .map(|r| 10.0 + 2.0 * r[0] - 1.0 * r[1] + 0.75 * r[0] * r[1] + 0.1 * r[2])
+            .collect();
+        let want = estimate_effects(&design, &standard, 3).unwrap();
+        for seed in [1, 2, 3] {
+            let planned = design.randomized(seed);
+            // What the experimenter records, run by run.
+            let in_run_order: Vec<f64> = planned.run_order.iter().map(|&i| standard[i]).collect();
+            let got = estimate_effects(&planned.design, &in_run_order, 3).unwrap();
+            assert_eq!(got.len(), want.len());
+            for (g, w) in got.iter().zip(&want) {
+                assert_eq!(g.name, w.name);
+                assert!(
+                    (g.estimate - w.estimate).abs() < 1e-12,
+                    "{}: {} vs {}",
+                    g.name,
+                    g.estimate,
+                    w.estimate
+                );
+            }
+        }
+    }
+}

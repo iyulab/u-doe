@@ -666,6 +666,52 @@
       ],
       "type": "object"
     },
+    "RandomizedDesignDto": {
+      "properties": {
+        "data": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "factor_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "factor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "run_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "run_order": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "data",
+        "factor_names",
+        "run_order",
+        "run_count",
+        "factor_count"
+      ],
+      "type": "object"
+    },
     "ResponseSpecInput": {
       "additionalProperties": false,
       "description": "One response's desirability specification, as `desirability` and\n`optimize_desirability` read it. Declared for TypeScript so a misspelt\nfield or goal fails to compile rather than at the boundary.\n\nEach goal takes the limits and exponents its curve has: `Maximize`\n`lower`, `target`, `s1`; `Minimize` `target`, `upper`, `s1`; `Target` all\nfive. A field the goal does not read is refused (`invalid_option`), not\nignored -- it used to be required and then ignored.",
@@ -1144,6 +1190,41 @@
     },
     "plackett_burman.output": {
       "$ref": "#/$defs/DesignMatrixDto"
+    },
+    "randomize_runs.input": {
+      "additionalProperties": false,
+      "description": "The arguments of randomize_runs(design, factor_names, seed), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "design": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "factor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "seed": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "design",
+        "factor_names",
+        "seed"
+      ],
+      "type": "object"
+    },
+    "randomize_runs.output": {
+      "$ref": "#/$defs/RandomizedDesignDto"
     },
     "rsm_predict.input": {
       "additionalProperties": false,

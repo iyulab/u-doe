@@ -84,6 +84,56 @@
       }
     },
     {
+      "id": "randomize_runs",
+      "summary": "Puts the runs of a design in a random order, the same for the same seed. Returns the design in run order with `run_order` (the standard-order position of each run), so responses recorded in run order can be put back against the original design.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/randomize_runs.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/randomize_runs.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "seeded",
+        "note": "The order is drawn from the `seed` argument; the same design and seed give the same order."
+      },
+      "determinism": {
+        "kind": "seeded",
+        "test": "tests/integration.rs::randomization::a_seed_gives_one_order_a_permutation_with_the_runs_of_the_design"
+      },
+      "validation": {
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The run order is a permutation of the standard-order runs, the rows of the result are the original rows in that order, and the effects estimated from responses recorded in run order (put back in standard order) equal those of the standard-order experiment.",
+            "reference_kind": "literature",
+            "reference": "Randomization as a principle of experimental design (Montgomery 2019, ch. 1); the definition of a permutation",
+            "method": "for seeds 1..3 of a 2^3 design computes the effects of responses with known main effects and interactions in run order and in standard order",
+            "tolerance": "1e-12 (absolute)",
+            "test": "tests/integration.rs::randomization::the_effects_do_not_depend_on_the_order_the_runs_were_made_in"
+          }
+        ],
+        "limits": [
+          "Restates the definition of a permutation; the statistical quality of the shuffle is that of the random generator behind `seed`, which is not tested here. Restricted randomization (blocks, split plots) is not offered."
+        ]
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n · k) for n runs of k factors."
+      }
+    },
+    {
       "id": "ccd",
       "summary": "A central composite design for 2 to 6 factors: face-centered, rotatable or inscribed, with n_center center runs; each row is labelled factorial, axial or center. Returns the coded design matrix with factor names, run and factor counts.",
       "input": {

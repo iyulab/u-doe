@@ -65,6 +65,24 @@ pub struct DesignMatrix {
     pub factor_names: Vec<String>,
 }
 
+/// A design with its runs in the order they are to be performed.
+///
+/// The standard-order runs of a generated design are not the order to run them
+/// in: time-ordered disturbances (a drifting instrument, a warming furnace)
+/// would be confounded with the factors. Running in random order spreads them
+/// over the factor settings (Montgomery, *Design and Analysis of Experiments*,
+/// ch. 1: randomization).
+#[derive(Debug, Clone)]
+pub struct RandomizedDesign {
+    /// The runs, in the order to perform them.
+    pub design: DesignMatrix,
+    /// `run_order[i]` is the position in the standard-order design of the run
+    /// performed `i`-th (0-based): `design.data[i]` is the original's
+    /// `data[run_order[i]]`. A response recorded in run order is put back in
+    /// standard order by placing the `i`-th one at `run_order[i]`.
+    pub run_order: Vec<usize>,
+}
+
 impl DesignMatrix {
     /// Number of experimental runs.
     pub fn run_count(&self) -> usize {
@@ -74,6 +92,36 @@ impl DesignMatrix {
     /// Number of factors.
     pub fn factor_count(&self) -> usize {
         self.factor_names.len()
+    }
+
+    /// The design with its runs in a random order, the same for the same `seed`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use u_doe::design::factorial::full_factorial;
+    ///
+    /// let design = full_factorial(3).unwrap();
+    /// let planned = design.randomized(42);
+    /// assert_eq!(planned.design.run_count(), 8);
+    /// // The same seed, the same order.
+    /// assert_eq!(planned.run_order, design.randomized(42).run_order);
+    /// // Every standard-order run appears once.
+    /// let mut sorted = planned.run_order.clone();
+    /// sorted.sort_unstable();
+    /// assert_eq!(sorted, (0..8).collect::<Vec<_>>());
+    /// ```
+    pub fn randomized(&self, seed: u64) -> RandomizedDesign {
+        let mut rng = u_numflow::random::create_rng(seed);
+        let run_order = u_numflow::random::shuffled_indices(self.run_count(), &mut rng);
+        let data = run_order.iter().map(|&i| self.data[i].clone()).collect();
+        RandomizedDesign {
+            design: DesignMatrix {
+                data,
+                factor_names: self.factor_names.clone(),
+            },
+            run_order,
+        }
     }
 
     /// Get the value of factor `j` in run `i`.

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `DesignMatrix::randomized(seed)` puts the runs of a design in a random order, the same for the same seed, and returns
+  where each run came from (`RandomizedDesign::run_order`) -- the order to perform a generated design in. WebAssembly:
+  `randomize_runs(design, factor_names, seed)`.
+
 ### Changed
 
 - Depends on u-numflow 0.16.

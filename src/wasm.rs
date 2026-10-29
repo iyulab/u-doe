@@ -545,6 +545,17 @@ struct DesignMatrixDto {
     factor_count: usize,
 }
 
+#[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[tsify(missing_as_null)]
+struct RandomizedDesignDto {
+    data: Vec<Vec<f64>>,
+    factor_names: Vec<String>,
+    run_order: Vec<usize>,
+    run_count: usize,
+    factor_count: usize,
+}
+
 impl From<crate::design::DesignMatrix> for DesignMatrixDto {
     fn from(d: crate::design::DesignMatrix) -> Self {
         let run_count = d.run_count();
@@ -766,6 +777,53 @@ pub fn full_factorial(k: f64) -> Result<JsValue, JsValue> {
     let k = whole(k, "k", 2, Some(7)).map_err(js_err)?;
     let design = crate::design::factorial::full_factorial(k).map_err(js_err)?;
     to_js(&DesignMatrixDto::from(design))
+}
+
+/// Put the runs of a design in a random order, the same for the same `seed`.
+///
+/// A generated design lists its runs in standard order; performing them in that
+/// order would confound time-ordered disturbances (a drifting instrument, a
+/// warming furnace) with the factors. `design` is the coded design matrix
+/// (`data[run][factor]`), `factor_names` one name per factor, `seed` a whole
+/// number from 0 to 4294967295.
+///
+/// Returns `{ data, factor_names, run_order, run_count, factor_count }`: `data`
+/// is the design in the order to perform it, and `run_order[i]` is the position
+/// in the standard-order design of the run performed `i`-th (0-based) -- put a
+/// response recorded `i`-th at `run_order[i]` to analyse it against the original
+/// design.
+///
+/// # Errors
+/// Throws an `Error` carrying `code`: `empty_input` (`parameter` `"design"`) for
+/// a design with no runs, `dimension_mismatch` for a run that does not have one
+/// entry per factor, `parameter_out_of_range` for a `seed` that is negative or
+/// past 4294967295, `malformed_input` for a fractional one.
+#[wasm_bindgen(unchecked_return_type = "RandomizedDesignDto")]
+pub fn randomize_runs(
+    #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
+    seed: f64,
+) -> Result<JsValue, JsValue> {
+    let data: Vec<Vec<f64>> = from_js(design, "design")?;
+    let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
+    let seed = whole(seed, "seed", 0, None).map_err(js_err)?;
+    if data.is_empty() {
+        return Err(js_err(crate::error::DoeError::EmptyInput {
+            parameter: "design",
+        }));
+    }
+    let design = crate::design::DesignMatrix { data, factor_names };
+    design.check_shape().map_err(js_err)?;
+    let planned = design.randomized(seed as u64);
+    let run_count = planned.design.run_count();
+    let factor_count = planned.design.factor_count();
+    to_js(&RandomizedDesignDto {
+        data: planned.design.data,
+        factor_names: planned.design.factor_names,
+        run_order: planned.run_order,
+        run_count,
+        factor_count,
+    })
 }
 
 /// Generate a Central Composite Design (CCD).
@@ -2300,6 +2358,15 @@ mod engine_card_tests {
         for id in ["full_factorial", "definitive_screening", "plackett_burman"] {
             s.op(id, vec![arg("k", num())], design());
         }
+        s.op(
+            "randomize_runs",
+            vec![
+                arg("design", matrix()),
+                arg("factor_names", names()),
+                arg("seed", num()),
+            ],
+            s.of::<RandomizedDesignDto>(),
+        );
         s.op(
             "ccd",
             vec![

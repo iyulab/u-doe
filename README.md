@@ -130,6 +130,33 @@ println!("Required replicates: {n:?}");
 | Simplex Lattice | `simplex_lattice(q, m)` | Mixture, q = 2..12, degree m = 1..10 |
 | Simplex Centroid | `simplex_centroid(q)` | Mixture, q = 2..12, 2^q − 1 subset centroids |
 
+## Running in Random Order
+
+A generated design lists its runs in standard order. Performing them in that
+order would confound a time-ordered disturbance (a drifting instrument, a
+warming furnace) with the factors, so run them in random order
+(Montgomery 2019, ch. 1). `randomized(seed)` puts the runs in an order that is
+the same for the same seed and says where each came from:
+
+```rust
+use u_doe::design::factorial::full_factorial;
+
+let design = full_factorial(3).unwrap();
+let planned = design.randomized(42);
+// `planned.design` is the design in the order to perform it; the run done i-th
+// is the standard-order run `planned.run_order[i]`.
+assert_eq!(planned.run_order.len(), 8);
+// Responses recorded in run order go back against the original design:
+let mut standard = vec![0.0; 8];
+for (i, &at) in planned.run_order.iter().enumerate() {
+    standard[at] = 10.0 + i as f64; // the i-th response recorded
+}
+```
+
+From JavaScript, `randomize_runs(design, factor_names, seed)` takes the design
+matrix and returns `{ data, factor_names, run_order, run_count, factor_count }`.
+Restricted randomization (blocks, split plots) is not offered.
+
 ## References
 
 - Montgomery, D.C. (2019). *Introduction to Statistical Quality Control*, 8th ed. Wiley.
