@@ -21,9 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of each block in a random order within it (restricted randomization). Each block's runs stay together, because they
   share its batch, shift or day. `RandomizedBlockedDesign::run_order` gives where each run came from. (Rust only for
   now.)
+- `doe_anova` analyses a blocked experiment: given the block of each run, it takes the block differences out of the
+  residual as a fixed effect (`DoeAnovaResult::blocks` — sum of squares, degrees of freedom, mean square; no F test,
+  the runs being randomized only within blocks), moves each run's fitted value by its block mean, and takes pure error
+  within blocks. An effect confounded with the blocks is refused as `AliasedEffects` with `Block`, one the blocks cut
+  across as `PartiallyAliasedEffects` with `Block`, and centre points spread unevenly over the blocks as
+  `PartiallyAliasedEffects { first: "curvature", second: "Block" }`. WebAssembly: an optional fifth argument
+  `blocks`, and `blocks` in the result.
 
 ### Changed
 
+- **Breaking** `doe_anova` takes a fourth argument, `blocks: Option<&[usize]>`; pass `None` for the analysis it
+  made before.
 - **Breaking** `DoeError` has a new variant, `UnsupportedBlocking { k, n_blocks, supported }` (code
   `unsupported_blocking`).
 - Depends on u-numflow 0.16.

@@ -372,7 +372,7 @@ mod tests {
         let (design, y) = replicated_cube();
         let names = ["A", "B", "C", "A:B"];
         let fit = fit_least_squares(&design, &y, &names).unwrap();
-        let anova = doe_anova(&design, &y, &names).unwrap();
+        let anova = doe_anova(&design, &y, &names, None).unwrap();
 
         for (t, e) in fit.terms.iter().zip(&anova.effects) {
             assert_eq!(t.name, e.name);
@@ -418,7 +418,7 @@ mod tests {
         y.remove(5);
         let names = ["A", "B", "C", "A:B"];
         assert!(matches!(
-            doe_anova(&design, &y, &names),
+            doe_anova(&design, &y, &names, None),
             Err(DoeError::PartiallyAliasedEffects { .. })
         ));
 

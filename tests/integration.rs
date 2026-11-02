@@ -27,7 +27,7 @@ fn montgomery_ex62_full_pipeline() {
     assert!((find("A:C") - (-18.125)).abs() < 0.001);
 
     // Step 2: ANOVA
-    let anova = doe_anova(&design, &responses, &["A", "C", "D", "A:C"]).unwrap();
+    let anova = doe_anova(&design, &responses, &["A", "C", "D", "A:C"], None).unwrap();
     let ss_sum: f64 =
         anova.effects.iter().map(|r| r.sum_of_squares).sum::<f64>() + anova.residual_ss;
     assert!(
@@ -86,7 +86,7 @@ fn desirability_pipeline() {
         assert!((0.0..=1.0).contains(&d), "run {i}: d={d}");
     }
 
-    let anova = doe_anova(&design, &y1, &["A", "B", "C"]).unwrap();
+    let anova = doe_anova(&design, &y1, &["A", "B", "C"], None).unwrap();
     assert!(anova.r_squared >= 0.0);
 }
 

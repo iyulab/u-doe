@@ -21,6 +21,29 @@
       ],
       "type": "object"
     },
+    "BlockTermDto": {
+      "properties": {
+        "df": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mean_square": {
+          "format": "double",
+          "type": "number"
+        },
+        "sum_of_squares": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "sum_of_squares",
+        "df",
+        "mean_square"
+      ],
+      "type": "object"
+    },
     "ClassifiedDesignDto": {
       "description": "A design with the block each run was built in.",
       "properties": {
@@ -220,6 +243,16 @@
     },
     "DoeAnovaResultDto": {
       "properties": {
+        "blocks": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlockTermDto"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "curvature": {
           "anyOf": [
             {
@@ -917,8 +950,19 @@
     },
     "doe_anova.input": {
       "additionalProperties": false,
-      "description": "The arguments of doe_anova(design, responses, factor_names, effect_names), by name; the WebAssembly function takes them in that order.",
+      "description": "The arguments of doe_anova(design, responses, factor_names, effect_names, blocks), by name; the WebAssembly function takes them in that order.",
       "properties": {
+        "blocks": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "design": {
           "items": {
             "items": {

@@ -651,6 +651,7 @@ struct DoeAnovaResultDto {
     residuals: Vec<f64>,
     curvature: Option<CurvatureDto>,
     pure_error: Option<PureErrorDto>,
+    blocks: Option<BlockTermDto>,
 }
 
 #[derive(Serialize, tsify::Tsify)]
@@ -700,6 +701,15 @@ struct CurvatureDto {
 struct PureErrorDto {
     sum_of_squares: f64,
     df: usize,
+}
+
+#[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[tsify(missing_as_null)]
+struct BlockTermDto {
+    sum_of_squares: f64,
+    df: usize,
+    mean_square: f64,
 }
 
 // ---------------------------------------------------------------------------
@@ -936,32 +946,48 @@ pub fn definitive_screening(k: f64) -> Result<JsValue, JsValue> {
 /// `total_ss`, `r_squared`, `r_squared_adj`, per-run `fitted` and `residuals`
 /// (in run order) for residual plots, `curvature` (`{ sum_of_squares, df,
 /// f_statistic, p_value }`, or `null` without centre points) and `pure_error`
-/// (`{ sum_of_squares, df }`, or `null` when no design point was repeated).
+/// (`{ sum_of_squares, df }`, or `null` when no design point was repeated)
+/// and `blocks` (`{ sum_of_squares, df, mean_square }`, or `null` without
+/// `blocks`).
 ///
 /// Centre points -- rows with every factor at 0 -- are accepted: the effects
 /// come from the factorial rows, and the centre points are tested for
 /// curvature against the pure error.
 ///
+/// `blocks` (optional): the block of each run, a whole number from 0 to
+/// 4294967295 (runs with the same number share a block). The block
+/// differences are a fixed effect taken out of the residual; pure error is
+/// taken within blocks.
+///
 /// # Errors
 /// Throws an `Error` carrying `code` if dimensions do not match or an argument has the
-/// wrong shape (arguments are native JS values, not JSON strings).
+/// wrong shape (arguments are native JS values, not JSON strings);
+/// `aliased_effects` with `second: "Block"` for an effect confounded with the
+/// blocks, `partially_aliased_effects` with `second: "Block"` for one the
+/// blocks cut across (or `first: "curvature"` for centre points spread
+/// unevenly over the blocks); `malformed_input` / `parameter_out_of_range`
+/// (`parameter: "blocks"`, `index`) for a block that is not a whole number in
+/// range.
 #[wasm_bindgen(unchecked_return_type = "DoeAnovaResultDto")]
 pub fn doe_anova(
     #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
     #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] responses: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] effect_names: JsValue,
+    #[wasm_bindgen(unchecked_optional_param_type = "number[] | null")] blocks: Option<JsValue>,
 ) -> Result<JsValue, JsValue> {
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
     let responses = read_numbers(&responses, "responses")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
     let effect_names: Vec<String> = from_js(effect_names, "effect_names")?;
+    let blocks = read_blocks(blocks)?;
 
     let design = crate::design::DesignMatrix { data, factor_names };
     let effect_refs: Vec<&str> = effect_names.iter().map(|s| s.as_str()).collect();
 
     let result =
-        crate::analysis::anova::doe_anova(&design, &responses, &effect_refs).map_err(js_err)?;
+        crate::analysis::anova::doe_anova(&design, &responses, &effect_refs, blocks.as_deref())
+            .map_err(js_err)?;
 
     let dto = DoeAnovaResultDto {
         effects: result
@@ -993,8 +1019,52 @@ pub fn doe_anova(
             sum_of_squares: p.sum_of_squares,
             df: p.df,
         }),
+        blocks: result.blocks.map(|b| BlockTermDto {
+            sum_of_squares: b.sum_of_squares,
+            df: b.df,
+            mean_square: b.mean_square,
+        }),
     };
     to_js(&dto)
+}
+
+/// An optional list of block labels: absent (`undefined` or `null`) is no
+/// blocks; otherwise each entry a whole number from 0 to 4294967295, refused
+/// at its position.
+fn read_blocks(value: Option<JsValue>) -> Result<Option<Vec<usize>>, JsValue> {
+    let Some(value) = value.filter(|v| !v.is_null() && !v.is_undefined()) else {
+        return Ok(None);
+    };
+    read_numbers(&value, "blocks")?
+        .into_iter()
+        .enumerate()
+        .map(|(index, x)| block_label(x, index).map_err(js_err))
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
+}
+
+fn block_label(x: f64, index: usize) -> Result<usize, WireError> {
+    if x.fract() != 0.0 {
+        return Err(WireError::spec_field(
+            WireCode::MalformedInput,
+            "blocks",
+            index,
+            format!("blocks[{index}] must be a whole number, got {x}"),
+        ));
+    }
+    let cap = u32::MAX as f64;
+    if !(0.0..=cap).contains(&x) {
+        return Err(WireError::from(DoeError::ParameterOutOfRange {
+            parameter: "blocks",
+            index: Some(index),
+            min: Some(0.0),
+            max: Some(cap),
+            exclusive_min: None,
+            exclusive_max: None,
+            got: x,
+        }));
+    }
+    Ok(x as usize)
 }
 
 /// Fit two-level data by least squares and report Type III sums of squares.
@@ -2009,6 +2079,22 @@ mod dto_strictness_tests {
         }
     }
 
+    /// A block label is a whole number in range, refused at its position.
+    #[test]
+    fn a_block_label_is_a_whole_number_refused_at_its_index() {
+        assert_eq!(super::block_label(3.0, 0).expect("whole"), 3);
+        let fraction = super::block_label(1.5, 4).expect_err("a fraction");
+        assert_eq!(
+            fraction.fields,
+            serde_json::json!({ "code": "malformed_input", "parameter": "blocks", "index": 4 })
+        );
+        let negative = super::block_label(-1.0, 2).expect_err("negative");
+        assert_eq!(negative.fields["code"], "parameter_out_of_range");
+        assert_eq!(negative.fields["parameter"], "blocks");
+        assert_eq!(negative.fields["index"], 2);
+        assert_eq!(negative.fields["min"], 0.0);
+    }
+
     /// A negative count is a value out of range, not a malformed one.
     #[test]
     fn a_negative_count_is_out_of_range() {
@@ -2423,6 +2509,7 @@ mod engine_card_tests {
         };
         let mut anova = data();
         anova.push(arg("effect_names", names()));
+        anova.push(optional("blocks", s.of::<Option<Vec<u32>>>()));
         s.op("doe_anova", anova, s.of::<DoeAnovaResultDto>());
         let mut fit = data();
         fit.push(arg("effect_names", names()));

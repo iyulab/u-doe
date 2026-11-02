@@ -161,7 +161,7 @@ proptest! {
     ) {
         let design = full_factorial(k).unwrap();
         let names: Vec<&str> = design.factor_names.iter().map(String::as_str).collect();
-        let result = doe_anova(&design, &responses, &names).unwrap();
+        let result = doe_anova(&design, &responses, &names, None).unwrap();
 
         let effect_ss: f64 = result.effects.iter().map(|e| e.sum_of_squares).sum();
         prop_assert!(
@@ -198,7 +198,7 @@ proptest! {
         let design = full_factorial(k).unwrap();
         let names: Vec<&str> = design.factor_names.iter().map(String::as_str).collect();
         let fit = fit_least_squares(&design, &responses, &names).unwrap();
-        let anova = doe_anova(&design, &responses, &names).unwrap();
+        let anova = doe_anova(&design, &responses, &names, None).unwrap();
         let effects = estimate_effects(&design, &responses, 1).unwrap();
         let tol = |x: f64| 1e-6 * (1.0 + x.abs());
 
@@ -220,7 +220,7 @@ proptest! {
         unbalanced.data.remove(dropped);
         let mut y = responses.clone();
         y.remove(dropped);
-        prop_assert!(doe_anova(&unbalanced, &y, &names).is_err());
+        prop_assert!(doe_anova(&unbalanced, &y, &names, None).is_err());
         let fit = fit_least_squares(&unbalanced, &y, &names).unwrap();
         prop_assert_eq!(fit.residual_df, unbalanced.run_count() - 1 - k);
         for (idx, name) in names.iter().enumerate() {

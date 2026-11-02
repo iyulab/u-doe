@@ -38,14 +38,14 @@ fn the_analyses_give_the_same_ratios_in_any_unit() {
     let design = full_factorial(3).expect("2^3");
     let y = responses();
     let names = ["A", "B", "C", "A:B"];
-    let base_anova = doe_anova(&design, &y, &names).expect("anova");
+    let base_anova = doe_anova(&design, &y, &names, None).expect("anova");
     let base_ls = fit_least_squares(&design, &y, &names).expect("fit");
     let base_effects = estimate_effects(&design, &y, 3).expect("effects");
     let base_lenth = lenth(&design, &base_effects).expect("lenth");
 
     for k in SCALES {
         let yk: Vec<f64> = y.iter().map(|v| v * k).collect();
-        let anova = doe_anova(&design, &yk, &names).expect("anova");
+        let anova = doe_anova(&design, &yk, &names, None).expect("anova");
         close(anova.r_squared, base_anova.r_squared, "R2", k);
         for (a, b) in anova.effects.iter().zip(&base_anova.effects) {
             assert_eq!(

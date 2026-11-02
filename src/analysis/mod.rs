@@ -60,7 +60,11 @@ mod unit_invariance {
         let scaled = |y: &[f64]| y.iter().map(|v| v * 1e-9).collect::<Vec<f64>>();
         let names = ["A", "B", "A:B"];
 
-        let r2 = |y: &[f64]| doe_anova(&two_level, y, &names).expect("valid").r_squared;
+        let r2 = |y: &[f64]| {
+            doe_anova(&two_level, y, &names, None)
+                .expect("valid")
+                .r_squared
+        };
         let ls = |y: &[f64]| fit_least_squares(&two_level, y, &names).expect("valid");
         let rsm = |y: &[f64]| fit_rsm(&central, y).expect("valid").r_squared;
         let share = |y: &[f64]| {

@@ -355,11 +355,11 @@ Simplex centroid design: the centroid of every non-empty subset of the `q`
 components, giving `2^q − 1` runs (q=3 → 7, q=4 → 15). `q` must be in `2..=12` —
 the run count doubles with every additional component.
 
-#### `doe_anova(design, responses, factor_names, effect_names) -> AnovaResult`
+#### `doe_anova(design, responses, factor_names, effect_names, blocks?) -> AnovaResult`
 
 Perform DOE ANOVA on a coded design matrix.
 
-**Input:** `design`: `[[f64]]`, `responses`: `number[]` or `Float64Array`, `factor_names`: `["A","B"]`, `effect_names`: `["A","B","A:B"]`
+**Input:** `design`: `[[f64]]`, `responses`: `number[]` or `Float64Array`, `factor_names`: `["A","B"]`, `effect_names`: `["A","B","A:B"]`, `blocks` (optional): `number[]` — the block of each run, a whole number (runs with the same number share a block)
 
 Interaction effect names join factor names with `":"` (e.g. `"A:B"`). An unknown entry in `effect_names` is an error (since 0.5.0; previously silently skipped).
 
@@ -372,8 +372,10 @@ Since 0.10.0 three further inputs are errors rather than misleading numbers:
 
 **Output:**
 ```json
-{ "effects": [{ "name": "A", "sum_of_squares": 10.0, "df": 1, "mean_square": 10.0, "f_statistic": 5.0, "p_value": 0.03 }], "residual_ss": 4.0, "residual_df": 2, "total_ss": 14.0, "r_squared": 0.71, "r_squared_adj": 0.57, "fitted": [12.1, 14.3, ...], "residuals": [0.4, -0.3, ...], "curvature": null, "pure_error": null }
+{ "effects": [{ "name": "A", "sum_of_squares": 10.0, "df": 1, "mean_square": 10.0, "f_statistic": 5.0, "p_value": 0.03 }], "residual_ss": 4.0, "residual_df": 2, "total_ss": 14.0, "r_squared": 0.71, "r_squared_adj": 0.57, "fitted": [12.1, 14.3, ...], "residuals": [0.4, -0.3, ...], "curvature": null, "pure_error": null, "blocks": null }
 ```
+
+**Blocks.** With `blocks`, the block differences (a batch, a shift, a day) are a fixed effect: `blocks: { sum_of_squares, df, mean_square }` is taken out of the residual, every run's `fitted` value moves by its block mean, and pure error is taken among replicates within one block. No F test is reported for the blocks — the runs were randomized only within them. An effect has to sum to zero within every block to be analysed: one confounded with the blocks is refused with `code: "aliased_effects"`, `second: "Block"`; one the blocks cut across with `code: "partially_aliased_effects"`, `second: "Block"`; centre points must be spread over the blocks in the same proportion (otherwise `partially_aliased_effects`, `first: "curvature"`).
 
 #### `fit_least_squares(design, responses, factor_names, effect_names) -> LeastSquaresFit`
 
