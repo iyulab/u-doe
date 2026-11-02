@@ -12,9 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DesignMatrix::randomized(seed)` puts the runs of a design in a random order, the same for the same seed, and returns
   where each run came from (`RandomizedDesign::run_order`) -- the order to perform a generated design in. WebAssembly:
   `randomize_runs(design, factor_names, seed)`.
+- `blocked_factorial(k, n_blocks)` runs a 2^k full factorial in 2 or 4 blocks, confounding the interactions of the
+  standard blocking arrangements (Montgomery, ch. 7) -- the highest-order interaction for two blocks; two high-order
+  interactions and their product for four -- and no main effect or other interaction. It returns the block of each run
+  and the confounded interactions (`confounded_names()`); `standard_blockings()` lists the `(k, n_blocks)` it makes.
+  (Rust only for now.)
 
 ### Changed
 
+- **Breaking** `DoeError` has a new variant, `UnsupportedBlocking { k, n_blocks, supported }` (code
+  `unsupported_blocking`).
 - Depends on u-numflow 0.16.
 
 ## [0.25.3] - 2026-10-28

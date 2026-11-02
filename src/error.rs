@@ -71,6 +71,13 @@ pub enum DoeError {
         p: usize,
         supported: Vec<(usize, usize)>,
     },
+    /// The 2^k factorial cannot be run in that many blocks from the standard
+    /// blocking table. `supported` lists every `(k, n_blocks)` that can.
+    UnsupportedBlocking {
+        k: usize,
+        n_blocks: usize,
+        supported: Vec<(usize, usize)>,
+    },
     /// No Taguchi orthogonal array has this name. `supported` lists the names.
     UnknownArray {
         array: String,
@@ -181,6 +188,11 @@ impl DoeError {
             DoeError::UnsupportedFraction {
                 k: 0,
                 p: 0,
+                supported: vec![],
+            },
+            DoeError::UnsupportedBlocking {
+                k: 0,
+                n_blocks: 0,
                 supported: vec![],
             },
             DoeError::UnknownArray {
@@ -318,6 +330,7 @@ impl DoeError {
             DoeError::EmptyInput { .. } => "empty_input",
             DoeError::InsufficientData { .. } => "insufficient_data",
             DoeError::UnsupportedFraction { .. } => "unsupported_fraction",
+            DoeError::UnsupportedBlocking { .. } => "unsupported_blocking",
             DoeError::UnknownArray { .. } => "unknown_array",
             DoeError::DimensionMismatch { .. } => "dimension_mismatch",
             DoeError::UnknownEffect { .. } => "unknown_effect",
@@ -382,6 +395,23 @@ impl std::fmt::Display for DoeError {
                         f.write_str(",")?;
                     }
                     write!(f, "({k},{p})")?;
+                }
+                Ok(())
+            }
+            DoeError::UnsupportedBlocking {
+                k,
+                n_blocks,
+                supported,
+            } => {
+                write!(
+                    f,
+                    "unsupported blocking: 2^{k} in {n_blocks} blocks not in standard table; supported (k,blocks): "
+                )?;
+                for (i, (k, b)) in supported.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(",")?;
+                    }
+                    write!(f, "({k},{b})")?;
                 }
                 Ok(())
             }
@@ -552,6 +582,11 @@ mod tests {
                 k: 4,
                 p: 2,
                 supported: vec![(4, 1), (5, 1)],
+            },
+            DoeError::UnsupportedBlocking {
+                k: 2,
+                n_blocks: 4,
+                supported: vec![(2, 2), (3, 4)],
             },
             DoeError::UnknownArray {
                 array: "L5".into(),

@@ -363,6 +363,146 @@ fn find_entry(k: usize, p: usize) -> Result<&'static GeneratorEntry, DoeError> {
         })
 }
 
+/// A 2^k full factorial run in blocks: the runs, the block of each, and the
+/// interactions that are confounded with the blocks.
+///
+/// Running all 2^k runs under the same conditions is often impossible -- a
+/// batch of material, a shift, a day holds only some. Blocking assigns the runs
+/// to blocks so that the block differences fall on chosen high-order
+/// interactions (confounded with the blocks: their estimates absorb the block
+/// differences) and on no main effect or other interaction, which stay
+/// orthogonal to the blocks (Montgomery, *Design and Analysis of Experiments*,
+/// ch. 7).
+#[derive(Debug, Clone)]
+pub struct BlockedDesign {
+    /// The runs, in standard (Yates) order.
+    pub design: DesignMatrix,
+    /// `blocks[run]` is the block of that run, `0..n_blocks`; every block holds
+    /// `2^k / n_blocks` runs.
+    pub blocks: Vec<usize>,
+    /// The number of blocks.
+    pub n_blocks: usize,
+    /// The interactions confounded with the blocks, as factor index sets
+    /// (ascending): the generators and, for four blocks, their generalized
+    /// interaction (the product of the two). Their contrasts are constant
+    /// within each block.
+    pub confounded: Vec<Vec<usize>>,
+}
+
+impl BlockedDesign {
+    /// The confounded interactions by name, factor names joined with `":"`
+    /// (as the effect estimates name them).
+    pub fn confounded_names(&self) -> Vec<String> {
+        self.confounded
+            .iter()
+            .map(|set| {
+                set.iter()
+                    .map(|&f| self.design.factor_names[f].as_str())
+                    .collect::<Vec<_>>()
+                    .join(":")
+            })
+            .collect()
+    }
+}
+
+/// The block generators of the 2^k factorial in 2 or 4 blocks: Montgomery,
+/// *Design and Analysis of Experiments*, Table 7.8 ("Suggested blocking
+/// arrangements for the 2^k factorial design"). Two blocks confound the
+/// highest-order interaction; four confound two high-order interactions whose
+/// generalized interaction is as high in order as the table allows.
+fn block_generators(k: usize, n_blocks: usize) -> Option<&'static [&'static [usize]]> {
+    match (k, n_blocks) {
+        (2, 2) => Some(&[&[0, 1]]),
+        (3, 2) => Some(&[&[0, 1, 2]]),
+        (4, 2) => Some(&[&[0, 1, 2, 3]]),
+        (5, 2) => Some(&[&[0, 1, 2, 3, 4]]),
+        (6, 2) => Some(&[&[0, 1, 2, 3, 4, 5]]),
+        (7, 2) => Some(&[&[0, 1, 2, 3, 4, 5, 6]]),
+        // 2^3 in 4: AB, AC (and BC).
+        (3, 4) => Some(&[&[0, 1], &[0, 2]]),
+        // 2^4 in 4: ABC, ACD (and BD).
+        (4, 4) => Some(&[&[0, 1, 2], &[0, 2, 3]]),
+        // 2^5 in 4: ABC, CDE (and ABDE).
+        (5, 4) => Some(&[&[0, 1, 2], &[2, 3, 4]]),
+        // 2^6 in 4: ABEF, ABCD (and CDEF).
+        (6, 4) => Some(&[&[0, 1, 4, 5], &[0, 1, 2, 3]]),
+        // 2^7 in 4: ABCFG, CDEFG (and ABDE).
+        (7, 4) => Some(&[&[0, 1, 2, 5, 6], &[2, 3, 4, 5, 6]]),
+        _ => None,
+    }
+}
+
+/// Every `(k, n_blocks)` [`blocked_factorial`] can generate, ascending.
+pub fn standard_blockings() -> Vec<(usize, usize)> {
+    (2..=7)
+        .flat_map(|k| [2, 4].map(|b| (k, b)))
+        .filter(|&(k, b)| block_generators(k, b).is_some())
+        .collect()
+}
+
+/// The contrast of the interaction of `set` in `row`: the product of those
+/// factors' ±1 levels.
+fn contrast(row: &[f64], set: &[usize]) -> f64 {
+    set.iter().map(|&f| row[f]).product()
+}
+
+/// A 2^k full factorial (`k` 2..=7) in `n_blocks` blocks (2 or 4; 4 needs
+/// `k >= 3`), confounding the interactions of Montgomery's standard blocking
+/// arrangements ([`BlockedDesign`]). The runs are those of [`full_factorial`]
+/// in the same order.
+///
+/// The block of a run is read from the signs of the generator contrasts: with
+/// generators `g_1, g_2` the run is in block `[g_1 = +1] + 2·[g_2 = +1]`.
+///
+/// # Errors
+/// `k` outside 2..=7 ([`DoeError::ParameterOutOfRange`]); a `(k, n_blocks)`
+/// outside [`standard_blockings`] -- `n_blocks` other than 2 or 4, or 4 blocks
+/// of a 2^2, which would confound a main effect
+/// ([`DoeError::UnsupportedBlocking`]).
+///
+/// # Examples
+///
+/// ```
+/// use u_doe::design::factorial::blocked_factorial;
+/// let b = blocked_factorial(3, 2).unwrap();
+/// assert_eq!(b.design.run_count(), 8);
+/// assert_eq!(b.confounded_names(), ["A:B:C"]);
+/// // Four runs a block.
+/// assert_eq!(b.blocks.iter().filter(|&&x| x == 0).count(), 4);
+/// ```
+pub fn blocked_factorial(k: usize, n_blocks: usize) -> Result<BlockedDesign, DoeError> {
+    let design = full_factorial(k)?;
+    let generators =
+        block_generators(k, n_blocks).ok_or_else(|| DoeError::UnsupportedBlocking {
+            k,
+            n_blocks,
+            supported: standard_blockings(),
+        })?;
+    let blocks = design
+        .data
+        .iter()
+        .map(|row| {
+            generators
+                .iter()
+                .enumerate()
+                .map(|(i, g)| usize::from(contrast(row, g) > 0.0) << i)
+                .sum()
+        })
+        .collect();
+    let mut confounded: Vec<Vec<usize>> = generators.iter().map(|g| g.to_vec()).collect();
+    if let [a, b] = generators {
+        // The generalized interaction: factors in exactly one of the two.
+        let product: Vec<usize> = (0..k).filter(|f| a.contains(f) != b.contains(f)).collect();
+        confounded.push(product);
+    }
+    Ok(BlockedDesign {
+        design,
+        blocks,
+        n_blocks,
+        confounded,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -709,5 +849,103 @@ mod tests {
                 }
             }
         }
+    }
+
+    // ── Blocked factorial ──
+
+    /// Every interaction (non-empty factor set) of k factors.
+    fn all_effects(k: usize) -> Vec<Vec<usize>> {
+        (1..(1usize << k))
+            .map(|mask| (0..k).filter(|f| mask >> f & 1 == 1).collect())
+            .collect()
+    }
+
+    #[test]
+    fn blocks_confound_exactly_their_interactions_and_no_other_effect() {
+        for k in 2..=7 {
+            for n_blocks in [2, 4] {
+                if n_blocks == 4 && k < 3 {
+                    continue;
+                }
+                let b = blocked_factorial(k, n_blocks).expect("valid");
+                let runs = b.design.run_count();
+                // Equal blocks.
+                for blk in 0..n_blocks {
+                    let size = b.blocks.iter().filter(|&&x| x == blk).count();
+                    assert_eq!(size, runs / n_blocks, "k {k} blocks {n_blocks}");
+                }
+                assert_eq!(b.confounded.len(), if n_blocks == 2 { 1 } else { 3 });
+                for effect in all_effects(k) {
+                    // Sum of the effect's contrast in each block.
+                    let sums: Vec<f64> = (0..n_blocks)
+                        .map(|blk| {
+                            b.design
+                                .data
+                                .iter()
+                                .zip(&b.blocks)
+                                .filter(|(_, &x)| x == blk)
+                                .map(|(row, _)| contrast(row, &effect))
+                                .sum()
+                        })
+                        .collect();
+                    let per_block = (runs / n_blocks) as f64;
+                    if b.confounded.contains(&effect) {
+                        // Constant within each block: ± the block size.
+                        assert!(
+                            sums.iter().all(|s| s.abs() == per_block),
+                            "k {k} {effect:?}"
+                        );
+                    } else {
+                        // Balanced within each block: orthogonal to the blocks.
+                        assert!(sums.iter().all(|&s| s == 0.0), "k {k} {effect:?} {sums:?}");
+                    }
+                }
+                // No main effect is ever confounded.
+                assert!(b.confounded.iter().all(|c| c.len() >= 2));
+            }
+        }
+    }
+
+    #[test]
+    fn two_blocks_confound_the_highest_interaction_and_four_follow_the_table() {
+        assert_eq!(
+            blocked_factorial(4, 2).unwrap().confounded_names(),
+            ["A:B:C:D"]
+        );
+        assert_eq!(
+            blocked_factorial(3, 4).unwrap().confounded_names(),
+            ["A:B", "A:C", "B:C"]
+        );
+        assert_eq!(
+            blocked_factorial(4, 4).unwrap().confounded_names(),
+            ["A:B:C", "A:C:D", "B:D"]
+        );
+        assert_eq!(
+            blocked_factorial(5, 4).unwrap().confounded_names(),
+            ["A:B:C", "C:D:E", "A:B:D:E"]
+        );
+        // The runs are the full factorial's, in the same order.
+        assert_eq!(
+            blocked_factorial(5, 4).unwrap().design.data,
+            full_factorial(5).unwrap().data
+        );
+    }
+
+    #[test]
+    fn blocking_outside_the_table_is_refused() {
+        for (k, n_blocks) in [(3, 3), (2, 4), (4, 8)] {
+            match blocked_factorial(k, n_blocks) {
+                Err(DoeError::UnsupportedBlocking { supported, .. }) => {
+                    assert_eq!(supported, standard_blockings());
+                    assert!(!supported.contains(&(k, n_blocks)));
+                }
+                other => panic!("({k}, {n_blocks}): {other:?}"),
+            }
+        }
+        assert_eq!(standard_blockings().len(), 11);
+        assert!(matches!(
+            blocked_factorial(8, 2),
+            Err(DoeError::ParameterOutOfRange { parameter: "k", .. })
+        ));
     }
 }

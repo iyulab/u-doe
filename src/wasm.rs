@@ -2221,7 +2221,7 @@ mod code_catalog_tests {
     /// until it has one, so the catalog cannot leave it out.
     #[test]
     fn every_reason_has_an_example() {
-        let mut seen = [false; 19];
+        let mut seen = [false; 20];
         for e in DoeError::examples() {
             let i = match e {
                 DoeError::ParameterOutOfRange { .. } => 0,
@@ -2243,6 +2243,7 @@ mod code_catalog_tests {
                 DoeError::NonPositiveResponse { .. } => 16,
                 DoeError::InvalidDesirabilityLimits { .. } => 17,
                 DoeError::NoWeightedResponse => 18,
+                DoeError::UnsupportedBlocking { .. } => 19,
             };
             assert!(!seen[i], "two examples of reason {i}");
             seen[i] = true;
