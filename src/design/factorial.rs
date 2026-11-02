@@ -389,7 +389,66 @@ pub struct BlockedDesign {
     pub confounded: Vec<Vec<usize>>,
 }
 
+/// A blocked design in the order to perform its runs: the blocks one after
+/// another in a random order, the runs of each in a random order within it
+/// (restricted randomization — the runs of a block share its batch, shift or
+/// day, so they are run together).
+#[derive(Debug, Clone)]
+pub struct RandomizedBlockedDesign {
+    /// The runs in the order to perform them, with their blocks (same order),
+    /// the number of blocks and the confounded interactions.
+    pub design: BlockedDesign,
+    /// `run_order[i]` is the position in the standard-order design of the run
+    /// performed `i`-th, as in [`RandomizedDesign`](super::RandomizedDesign).
+    pub run_order: Vec<usize>,
+}
+
 impl BlockedDesign {
+    /// The runs in a random order that keeps each block together: the blocks
+    /// in a random order, the runs in a random order within each block. The
+    /// same `seed` gives the same order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use u_doe::design::factorial::blocked_factorial;
+    ///
+    /// let blocked = blocked_factorial(3, 2).unwrap();
+    /// let planned = blocked.randomized(7);
+    /// // Each block's runs are performed one after another.
+    /// let half = planned.design.blocks.len() / 2;
+    /// assert!(planned.design.blocks[..half].iter().all(|&b| b == planned.design.blocks[0]));
+    /// assert!(planned.design.blocks[half..].iter().all(|&b| b != planned.design.blocks[0]));
+    /// assert_eq!(planned.run_order, blocked.randomized(7).run_order);
+    /// ```
+    pub fn randomized(&self, seed: u64) -> RandomizedBlockedDesign {
+        let mut rng = u_numflow::random::create_rng(seed);
+        let block_order = u_numflow::random::shuffled_indices(self.n_blocks, &mut rng);
+        let mut run_order = Vec::with_capacity(self.blocks.len());
+        for &block in &block_order {
+            let mut runs: Vec<usize> = (0..self.blocks.len())
+                .filter(|&r| self.blocks[r] == block)
+                .collect();
+            u_numflow::random::shuffle(&mut runs, &mut rng);
+            run_order.extend(runs);
+        }
+        RandomizedBlockedDesign {
+            design: BlockedDesign {
+                design: super::DesignMatrix {
+                    data: run_order
+                        .iter()
+                        .map(|&i| self.design.data[i].clone())
+                        .collect(),
+                    factor_names: self.design.factor_names.clone(),
+                },
+                blocks: run_order.iter().map(|&i| self.blocks[i]).collect(),
+                n_blocks: self.n_blocks,
+                confounded: self.confounded.clone(),
+            },
+            run_order,
+        }
+    }
+
     /// The confounded interactions by name, factor names joined with `":"`
     /// (as the effect estimates name them).
     pub fn confounded_names(&self) -> Vec<String> {
@@ -506,6 +565,32 @@ pub fn blocked_factorial(k: usize, n_blocks: usize) -> Result<BlockedDesign, Doe
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn randomizing_a_blocked_design_keeps_each_block_together() {
+        for (k, n_blocks) in [(3, 2), (4, 4), (5, 4)] {
+            let blocked = blocked_factorial(k, n_blocks).expect("an arrangement");
+            for seed in 0..20 {
+                let planned = blocked.randomized(seed);
+                let order = &planned.run_order;
+                // A permutation of the runs.
+                let mut sorted = order.clone();
+                sorted.sort_unstable();
+                assert_eq!(sorted, (0..blocked.blocks.len()).collect::<Vec<_>>());
+                // Each run keeps its settings and its block.
+                for (i, &r) in order.iter().enumerate() {
+                    assert_eq!(planned.design.design.data[i], blocked.design.data[r]);
+                    assert_eq!(planned.design.blocks[i], blocked.blocks[r]);
+                }
+                // The blocks come one after another, each whole.
+                let size = blocked.blocks.len() / n_blocks;
+                for chunk in planned.design.blocks.chunks(size) {
+                    assert!(chunk.iter().all(|&b| b == chunk[0]), "k {k} seed {seed}");
+                }
+                assert_eq!(planned.design.confounded, blocked.confounded);
+            }
+        }
+    }
 
     /// The refusal names the same table `standard_fractions` returns, so a
     /// caller can recover from it without a second source.
