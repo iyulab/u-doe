@@ -43,6 +43,25 @@ const f3 = m.full_factorial(3)
 e = refusal(() => m.fit_least_squares(f3.data.filter((r) => r[2] > 0), [1, 2, 3, 5], f3.factor_names, f3.factor_names))
 ok(e.code === 'aliased_effects' && e.first === 'C' && e.second === 'I', `code=${e.code} first=${e.first} second=${e.second}`)
 
+// Blocks: generate, randomize within blocks, analyse; a confounded effect is
+// refused naming the block, and an absent block term is null.
+const bl = m.blocked_factorial(3, 2)
+ok(JSON.stringify(bl.confounded) === '["A:B:C"]' && bl.blocks.length === 8, `blocked_factorial: ${JSON.stringify(bl.confounded)}`)
+const plan = m.randomize_runs(bl.data, bl.factor_names, 5, bl.blocks)
+ok(plan.blocks.slice(0, 4).every((b) => b === plan.blocks[0]) && plan.blocks.slice(4).every((b) => b !== plan.blocks[0]),
+  `randomize_runs keeps blocks together: ${plan.blocks}`)
+ok(m.randomize_runs(bl.data, bl.factor_names, 5).blocks === null, 'randomize_runs without blocks: blocks must be null')
+const by = plan.data.map((r, i) => 10 + r[0] + 2 * plan.blocks[i])
+ok(m.doe_anova(plan.data, by, plan.factor_names, ['A'], plan.blocks).blocks.df === 1, 'doe_anova blocks.df')
+ok(m.doe_anova(plan.data, by, plan.factor_names, ['A']).blocks === null, 'doe_anova without blocks: blocks must be null')
+e = refusal(() => m.doe_anova(bl.data, by, bl.factor_names, ['A:B:C'], bl.blocks))
+ok(e.code === 'aliased_effects' && e.first === 'A:B:C' && e.second === 'Block', `confounded: ${e.code} ${e.first}/${e.second}`)
+e = refusal(() => m.doe_anova(bl.data, by, bl.factor_names, ['A'], [0, 1, 0, 1, 0, 1, 0, 1.5]))
+ok(e.code === 'malformed_input' && e.parameter === 'blocks' && e.index === 7, `fractional block: ${e.code} ${e.parameter}@${e.index}`)
+e = refusal(() => m.blocked_factorial(2, 4))
+ok(e.code === 'unsupported_blocking' && JSON.stringify(e.supported) === JSON.stringify(m.standard_blockings().map((t) => [t.k, t.n_blocks])),
+  'unsupported_blocking must list the table standard_blockings() returns')
+
 e = refusal(() => m.fractional_factorial(4, 2))
 const table = m.standard_fractions()
 ok(e.code === 'unsupported_fraction' && JSON.stringify(e.supported) === JSON.stringify(table.map((t) => [t.k, t.p])),

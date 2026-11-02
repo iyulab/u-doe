@@ -85,7 +85,7 @@
     },
     {
       "id": "randomize_runs",
-      "summary": "Puts the runs of a design in a random order, the same for the same seed. Returns the design in run order with `run_order` (the standard-order position of each run), so responses recorded in run order can be put back against the original design.",
+      "summary": "Puts the runs of a design in a random order, the same for the same seed -- with optional `blocks`, a restricted one: the blocks in a random order, the runs of each kept together in a random order within it. Returns the design in run order with `run_order` (the standard-order position of each run) and the block of each run in that order, so responses recorded in run order can be put back against the original design.",
       "input": {
         "schema": "schemas/wasm.schema.json#/$defs/randomize_runs.input",
         "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
@@ -122,15 +122,120 @@
             "method": "for seeds 1..3 of a 2^3 design computes the effects of responses with known main effects and interactions in run order and in standard order",
             "tolerance": "1e-12 (absolute)",
             "test": "tests/integration.rs::randomization::the_effects_do_not_depend_on_the_order_the_runs_were_made_in"
+          },
+          {
+            "claim": "With blocks, the run order is a permutation that keeps the runs of each block together, a seed gives one order, and the blocked analysis of responses recorded in run order (put back in standard order) equals that of the standard-order experiment.",
+            "reference_kind": "literature",
+            "reference": "Restricted randomization within blocks (Montgomery 2019, ch. 4 and 7)",
+            "method": "for seeds 1..8 of a 2^4 in four blocks with arbitrary labels checks the permutation, that each block's four runs are consecutive, and the blocked ANOVA in both orders",
+            "tolerance": "1e-9 (absolute)",
+            "test": "tests/integration.rs::randomization::blocks_stay_together_and_the_blocked_analysis_does_not_depend_on_the_order"
           }
         ],
         "limits": [
-          "Restates the definition of a permutation; the statistical quality of the shuffle is that of the random generator behind `seed`, which is not tested here. Restricted randomization (blocks, split plots) is not offered."
+          "Restates the definition of a permutation; the statistical quality of the shuffle is that of the random generator behind `seed`, which is not tested here. Split-plot randomization is not offered."
         ]
       },
       "performance": {
         "status": "none",
         "complexity": "O(n · k) for n runs of k factors."
+      }
+    },
+    {
+      "id": "blocked_factorial",
+      "summary": "The 2^k full factorial (k = 2..7) in 2 or 4 blocks, confounding the interactions of the standard blocking arrangements -- the highest-order interaction for two blocks, two high-order interactions and their product for four. Returns the design in standard order, the block of each run and the confounded interactions.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/blocked_factorial.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/blocked_factorial.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The contrasts of the confounded interactions are constant within each block, every other effect sums to zero within each block, and the blocks are equal in size.",
+            "reference_kind": "literature",
+            "reference": "Montgomery, Design and Analysis of Experiments, ch. 7 (confounding in the 2^k factorial; table of suggested blocking arrangements)",
+            "method": "for every (k, n_blocks) the table offers sums each of the 2^k - 1 effect contrasts within each block",
+            "tolerance": "exact (products of +-1)",
+            "test": "src/design/factorial.rs::tests::blocks_confound_exactly_their_interactions_and_no_other_effect"
+          }
+        ],
+        "limits": [
+          "Two and four blocks only; the generators are the published table, not searched."
+        ]
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(k · 2^k)."
+      }
+    },
+    {
+      "id": "standard_blockings",
+      "summary": "Every (k, n_blocks) blocked_factorial makes, ascending.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/standard_blockings.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/standard_blockings.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_randomness"
+      },
+      "validation": {
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The list is the (k, n_blocks) pairs blocked_factorial accepts and no other: 2 blocks for k = 2..7, 4 blocks for k = 3..7.",
+            "reference_kind": "literature",
+            "reference": "Montgomery, Design and Analysis of Experiments, ch. 7, table of suggested blocking arrangements",
+            "method": "builds every listed pair and is refused for the unlisted ones",
+            "tolerance": "exact",
+            "test": "src/design/factorial.rs::tests::blocking_outside_the_table_is_refused"
+          }
+        ],
+        "limits": [
+          "The published table; not extended."
+        ]
+      },
+      "performance": {
+        "status": "none"
       }
     },
     {

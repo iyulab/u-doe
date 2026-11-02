@@ -155,7 +155,37 @@ for (i, &at) in planned.run_order.iter().enumerate() {
 
 From JavaScript, `randomize_runs(design, factor_names, seed)` takes the design
 matrix and returns `{ data, factor_names, run_order, run_count, factor_count }`.
-Restricted randomization (blocks, split plots) is not offered.
+
+## Blocking
+
+When the runs cannot all be made under the same conditions — a batch of
+material, a shift, a day holds only some — run them in blocks.
+`blocked_factorial(k, n_blocks)` (2 or 4 blocks) assigns the runs so the block
+differences fall on chosen high-order interactions (Montgomery, ch. 7), and no
+main effect or other interaction. `randomized_in_blocks(blocks, seed)` keeps
+each block's runs together, in a random order within it, and `doe_anova` /
+`fit_least_squares` take the blocks out of the residual:
+
+```rust
+use u_doe::analysis::anova::doe_anova;
+use u_doe::design::factorial::blocked_factorial;
+
+let blocked = blocked_factorial(4, 2).unwrap();
+assert_eq!(blocked.confounded_names(), ["A:B:C:D"]);
+let planned = blocked.design.randomized_in_blocks(&blocked.blocks, 7).unwrap();
+// The second day runs 3 higher; the analysis takes that out of the error.
+let y: Vec<f64> = blocked.design.data.iter().zip(&blocked.blocks)
+    .map(|(r, &b)| 50.0 + 4.0 * r[0] - 2.0 * r[1] + 3.0 * b as f64)
+    .collect();
+let r = doe_anova(&blocked.design, &y, &["A", "B"], Some(&blocked.blocks)).unwrap();
+assert_eq!(r.blocks.unwrap().df, 1);
+assert!(r.residual_ss < 1e-9);
+assert_eq!(planned.run_order.len(), 16);
+```
+
+From JavaScript: `blocked_factorial(k, n_blocks)`, `randomize_runs(design,
+factor_names, seed, blocks)` and the `blocks` argument of `doe_anova` and
+`fit_least_squares`.
 
 ## References
 
@@ -284,6 +314,37 @@ Generate a 2^k full factorial design (k = 2..7).
 ```json
 { "data": [[...]], "factor_names": ["X1","X2"], "run_count": 4, "factor_count": 2 }
 ```
+
+#### `blocked_factorial(k, n_blocks) -> BlockedDesign`
+
+A 2^k full factorial (k = 2..7) in 2 or 4 blocks, confounding the interactions of the standard blocking arrangements (Montgomery, ch. 7): the highest-order interaction for two blocks, two high-order interactions and their product for four. A `(k, n_blocks)` not in `standard_blockings()` is refused with `code: "unsupported_blocking"` and `supported`.
+
+```js
+import { blocked_factorial, randomize_runs, doe_anova } from '@iyulab/u-doe';
+
+const b = blocked_factorial(3, 2);
+console.log(b.confounded); // ["A:B:C"]
+// Perform each block's runs together, in a random order within it.
+const plan = randomize_runs(b.data, b.factor_names, 11, b.blocks);
+// Record responses in that order, then analyse with the blocks.
+const y = plan.data.map((r, i) => 50 + 4 * r[0] - 2 * r[1] + 3 * plan.blocks[i] + (i % 2) * 0.1);
+const r = doe_anova(plan.data, y, plan.factor_names, ['A', 'B'], plan.blocks);
+console.log(r.blocks.df); // 1
+```
+
+**Output:**
+```json
+{ "data": [[...]], "factor_names": ["A","B","C"], "run_count": 8, "factor_count": 3,
+  "blocks": [0, 1, 1, 0, 1, 0, 0, 1], "n_blocks": 2, "confounded": ["A:B:C"] }
+```
+
+#### `standard_blockings() -> [{ k, n_blocks }]`
+
+Every `(k, n_blocks)` `blocked_factorial` makes, ascending.
+
+#### `randomize_runs(design, factor_names, seed, blocks?) -> RandomizedDesign`
+
+The runs in a random order, the same for the same `seed` (a whole number 0..4294967295): `{ data, factor_names, run_order, run_count, factor_count, blocks }`. `run_order[i]` is the standard-order position of the run performed `i`-th. With `blocks` (the block of each run), each block's runs stay together — the blocks in a random order, the runs of each in a random order within it — and `blocks` in the result is the block of each run in the order performed (`null` without).
 
 #### `fractional_factorial(k, p) -> DesignMatrix`
 

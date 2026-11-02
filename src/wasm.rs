@@ -554,6 +554,35 @@ struct RandomizedDesignDto {
     run_order: Vec<usize>,
     run_count: usize,
     factor_count: usize,
+    /// The block of each run, in the order to perform them; `null` when no
+    /// `blocks` were given.
+    blocks: Option<Vec<usize>>,
+}
+
+/// A 2^k factorial in blocks.
+#[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[tsify(missing_as_null)]
+struct BlockedDesignDto {
+    data: Vec<Vec<f64>>,
+    factor_names: Vec<String>,
+    run_count: usize,
+    factor_count: usize,
+    /// The block of each run, `0..n_blocks`.
+    blocks: Vec<usize>,
+    n_blocks: usize,
+    /// The interactions confounded with the blocks, factor names joined with
+    /// `":"`.
+    confounded: Vec<String>,
+}
+
+/// One `(k, n_blocks)` that `blocked_factorial` makes.
+#[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[tsify(missing_as_null)]
+struct BlockingDto {
+    k: usize,
+    n_blocks: usize,
 }
 
 impl From<crate::design::DesignMatrix> for DesignMatrixDto {
@@ -798,26 +827,35 @@ pub fn full_factorial(k: f64) -> Result<JsValue, JsValue> {
 /// (`data[run][factor]`), `factor_names` one name per factor, `seed` a whole
 /// number from 0 to 4294967295.
 ///
-/// Returns `{ data, factor_names, run_order, run_count, factor_count }`: `data`
-/// is the design in the order to perform it, and `run_order[i]` is the position
-/// in the standard-order design of the run performed `i`-th (0-based) -- put a
-/// response recorded `i`-th at `run_order[i]` to analyse it against the original
-/// design.
+/// Returns `{ data, factor_names, run_order, run_count, factor_count, blocks }`:
+/// `data` is the design in the order to perform it, and `run_order[i]` is the
+/// position in the standard-order design of the run performed `i`-th (0-based)
+/// -- put a response recorded `i`-th at `run_order[i]` to analyse it against
+/// the original design.
+///
+/// `blocks` (optional): the block of each run, a whole number (a batch, a
+/// shift, a day -- `blocked_factorial`'s `blocks`). The runs of a block are
+/// then kept together (restricted randomization): the blocks in a random
+/// order, the runs of each in a random order within it. The result's `blocks`
+/// is the block of each run in the order to perform them (`null` without).
 ///
 /// # Errors
 /// Throws an `Error` carrying `code`: `empty_input` (`parameter` `"design"`) for
 /// a design with no runs, `dimension_mismatch` for a run that does not have one
-/// entry per factor, `parameter_out_of_range` for a `seed` that is negative or
-/// past 4294967295, `malformed_input` for a fractional one.
+/// entry per factor or a `blocks` that does not hold one block per run,
+/// `parameter_out_of_range` for a `seed` that is negative or past 4294967295
+/// (or a block, with `index`), `malformed_input` for a fractional one.
 #[wasm_bindgen(unchecked_return_type = "RandomizedDesignDto")]
 pub fn randomize_runs(
     #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
     seed: f64,
+    #[wasm_bindgen(unchecked_optional_param_type = "number[] | null")] blocks: Option<JsValue>,
 ) -> Result<JsValue, JsValue> {
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
     let seed = whole(seed, "seed", 0, None).map_err(js_err)?;
+    let blocks = read_blocks(blocks)?;
     if data.is_empty() {
         return Err(js_err(crate::error::DoeError::EmptyInput {
             parameter: "design",
@@ -825,16 +863,68 @@ pub fn randomize_runs(
     }
     let design = crate::design::DesignMatrix { data, factor_names };
     design.check_shape().map_err(js_err)?;
-    let planned = design.randomized(seed as u64);
+    let planned = match &blocks {
+        Some(blocks) => design
+            .randomized_in_blocks(blocks, seed as u64)
+            .map_err(js_err)?,
+        None => design.randomized(seed as u64),
+    };
     let run_count = planned.design.run_count();
     let factor_count = planned.design.factor_count();
+    let blocks = blocks.map(|b| planned.run_order.iter().map(|&i| b[i]).collect());
     to_js(&RandomizedDesignDto {
         data: planned.design.data,
         factor_names: planned.design.factor_names,
         run_order: planned.run_order,
         run_count,
         factor_count,
+        blocks,
     })
+}
+
+/// A 2^k full factorial in `n_blocks` blocks, confounding the interactions of
+/// the standard blocking arrangements (Montgomery, *Design and Analysis of
+/// Experiments*, ch. 7): the highest-order interaction for two blocks, two
+/// high-order interactions and their product for four -- no main effect and
+/// no other interaction.
+///
+/// Returns `{ data, factor_names, run_count, factor_count, blocks, n_blocks,
+/// confounded }`: the runs in standard order, the block of each (`0` to
+/// `n_blocks - 1`), and the confounded interactions by name. Pass `blocks` on
+/// to `randomize_runs` to order the runs, and to `doe_anova` to analyse them.
+///
+/// # Errors
+/// Throws an `Error` carrying `code`: `parameter_out_of_range` (`parameter`
+/// `"k"`, `min` 2, `max` 7) for any other `k`; `unsupported_blocking` (`k`,
+/// `n_blocks`, `supported`) for a `(k, n_blocks)` that `standard_blockings()`
+/// does not list.
+#[wasm_bindgen(unchecked_return_type = "BlockedDesignDto")]
+pub fn blocked_factorial(k: f64, n_blocks: f64) -> Result<JsValue, JsValue> {
+    let k = whole(k, "k", 2, Some(7)).map_err(js_err)?;
+    let n_blocks = whole(n_blocks, "n_blocks", 0, None).map_err(js_err)?;
+    let blocked = crate::design::factorial::blocked_factorial(k, n_blocks).map_err(js_err)?;
+    let confounded = blocked.confounded_names();
+    let run_count = blocked.design.run_count();
+    let factor_count = blocked.design.factor_count();
+    to_js(&BlockedDesignDto {
+        data: blocked.design.data,
+        factor_names: blocked.design.factor_names,
+        run_count,
+        factor_count,
+        blocks: blocked.blocks,
+        n_blocks: blocked.n_blocks,
+        confounded,
+    })
+}
+
+/// Every `{ k, n_blocks }` `blocked_factorial` makes, ascending.
+#[wasm_bindgen(unchecked_return_type = "BlockingDto[]")]
+pub fn standard_blockings() -> Result<JsValue, JsValue> {
+    let table: Vec<BlockingDto> = crate::design::factorial::standard_blockings()
+        .into_iter()
+        .map(|(k, n_blocks)| BlockingDto { k, n_blocks })
+        .collect();
+    to_js(&table)
 }
 
 /// Generate a Central Composite Design (CCD).
@@ -2470,9 +2560,16 @@ mod engine_card_tests {
                 arg("design", matrix()),
                 arg("factor_names", names()),
                 arg("seed", num()),
+                optional("blocks", s.of::<Option<Vec<u32>>>()),
             ],
             s.of::<RandomizedDesignDto>(),
         );
+        s.op(
+            "blocked_factorial",
+            vec![arg("k", num()), arg("n_blocks", num())],
+            s.of::<BlockedDesignDto>(),
+        );
+        s.op("standard_blockings", vec![], s.of::<Vec<BlockingDto>>());
         s.op(
             "ccd",
             vec![

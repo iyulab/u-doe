@@ -16,11 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standard blocking arrangements (Montgomery, ch. 7) -- the highest-order interaction for two blocks; two high-order
   interactions and their product for four -- and no main effect or other interaction. It returns the block of each run
   and the confounded interactions (`confounded_names()`); `standard_blockings()` lists the `(k, n_blocks)` it makes.
-  (Rust only for now.)
-- `BlockedDesign::randomized(seed)` orders a blocked design for running it: the blocks in a random order, and the runs
-  of each block in a random order within it (restricted randomization). Each block's runs stay together, because they
-  share its batch, shift or day. `RandomizedBlockedDesign::run_order` gives where each run came from. (Rust only for
-  now.)
+  WebAssembly: `blocked_factorial(k, n_blocks)`, `standard_blockings()`.
+- `DesignMatrix::randomized_in_blocks(blocks, seed)` orders a design run in blocks: the blocks in a random order, and
+  the runs of each block in a random order within it (restricted randomization). Each block's runs stay together,
+  because they share its batch, shift or day. `BlockedDesign::randomized(seed)` does the same for a blocked factorial.
+  WebAssembly: an optional fourth argument `blocks` of `randomize_runs`, and `blocks` (in the order performed) in its
+  result.
 - `doe_anova` analyses a blocked experiment: given the block of each run, it takes the block differences out of the
   residual as a fixed effect (`DoeAnovaResult::blocks` — sum of squares, degrees of freedom, mean square; no F test,
   the runs being randomized only within blocks), moves each run's fitted value by its block mean, and takes pure error

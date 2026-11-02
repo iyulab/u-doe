@@ -44,6 +44,88 @@
       ],
       "type": "object"
     },
+    "BlockedDesignDto": {
+      "description": "A 2^k factorial in blocks.",
+      "properties": {
+        "blocks": {
+          "description": "The block of each run, `0..n_blocks`.",
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "confounded": {
+          "description": "The interactions confounded with the blocks, factor names joined with\n`\":\"`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "data": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "factor_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "factor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "n_blocks": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "run_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "data",
+        "factor_names",
+        "run_count",
+        "factor_count",
+        "blocks",
+        "n_blocks",
+        "confounded"
+      ],
+      "type": "object"
+    },
+    "BlockingDto": {
+      "description": "One `(k, n_blocks)` that `blocked_factorial` makes.",
+      "properties": {
+        "k": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "n_blocks": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "k",
+        "n_blocks"
+      ],
+      "type": "object"
+    },
     "ClassifiedDesignDto": {
       "description": "A design with the block each run was built in.",
       "properties": {
@@ -711,6 +793,18 @@
     },
     "RandomizedDesignDto": {
       "properties": {
+        "blocks": {
+          "description": "The block of each run, in the order to perform them; `null` when no\n`blocks` were given.",
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "data": {
           "items": {
             "items": {
@@ -860,6 +954,28 @@
         "steps"
       ],
       "type": "object"
+    },
+    "blocked_factorial.input": {
+      "additionalProperties": false,
+      "description": "The arguments of blocked_factorial(k, n_blocks), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "n_blocks": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "k",
+        "n_blocks"
+      ],
+      "type": "object"
+    },
+    "blocked_factorial.output": {
+      "$ref": "#/$defs/BlockedDesignDto"
     },
     "box_behnken.input": {
       "additionalProperties": false,
@@ -1258,8 +1374,19 @@
     },
     "randomize_runs.input": {
       "additionalProperties": false,
-      "description": "The arguments of randomize_runs(design, factor_names, seed), by name; the WebAssembly function takes them in that order.",
+      "description": "The arguments of randomize_runs(design, factor_names, seed, blocks), by name; the WebAssembly function takes them in that order.",
       "properties": {
+        "blocks": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "design": {
           "items": {
             "items": {
@@ -1402,6 +1529,19 @@
     },
     "simplex_lattice.output": {
       "$ref": "#/$defs/DesignMatrixDto"
+    },
+    "standard_blockings.input": {
+      "additionalProperties": false,
+      "description": "The arguments of standard_blockings(), by name; the WebAssembly function takes them in that order.",
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "standard_blockings.output": {
+      "items": {
+        "$ref": "#/$defs/BlockingDto"
+      },
+      "type": "array"
     },
     "standard_fractions.input": {
       "additionalProperties": false,

@@ -124,6 +124,67 @@ impl DesignMatrix {
         }
     }
 
+    /// The design with its runs in a random order that keeps each block
+    /// together -- restricted randomization, for runs that share a batch, a
+    /// shift or a day: the blocks in a random order, then the runs of each in
+    /// a random order within it. `blocks[run]` is the block of each run (any
+    /// labels; runs with the same label share a block). The same `seed` gives
+    /// the same order.
+    ///
+    /// # Errors
+    /// [`DoeError::DimensionMismatch`] (`parameter` = `blocks`) if `blocks`
+    /// does not hold one block per run.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use u_doe::design::factorial::full_factorial;
+    ///
+    /// let design = full_factorial(2).unwrap();
+    /// let days = [5, 9, 9, 5];
+    /// let planned = design.randomized_in_blocks(&days, 3).unwrap();
+    /// // The two runs of a day are performed one after the other.
+    /// let order: Vec<usize> = planned.run_order.iter().map(|&r| days[r]).collect();
+    /// assert_eq!(order[0], order[1]);
+    /// assert_eq!(order[2], order[3]);
+    /// ```
+    pub fn randomized_in_blocks(
+        &self,
+        blocks: &[usize],
+        seed: u64,
+    ) -> Result<RandomizedDesign, DoeError> {
+        if blocks.len() != self.run_count() {
+            return Err(DoeError::DimensionMismatch {
+                parameter: "blocks",
+                index: None,
+                expected: self.run_count(),
+                got: blocks.len(),
+                counted: "one block per run",
+            });
+        }
+        let mut labels = blocks.to_vec();
+        labels.sort_unstable();
+        labels.dedup();
+        let mut rng = u_numflow::random::create_rng(seed);
+        let block_order = u_numflow::random::shuffled_indices(labels.len(), &mut rng);
+        let mut run_order = Vec::with_capacity(blocks.len());
+        for &b in &block_order {
+            let mut runs: Vec<usize> = (0..blocks.len())
+                .filter(|&r| blocks[r] == labels[b])
+                .collect();
+            u_numflow::random::shuffle(&mut runs, &mut rng);
+            run_order.extend(runs);
+        }
+        let data = run_order.iter().map(|&i| self.data[i].clone()).collect();
+        Ok(RandomizedDesign {
+            design: DesignMatrix {
+                data,
+                factor_names: self.factor_names.clone(),
+            },
+            run_order,
+        })
+    }
+
     /// Get the value of factor `j` in run `i`.
     pub fn get(&self, run: usize, factor: usize) -> f64 {
         self.data[run][factor]

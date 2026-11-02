@@ -142,4 +142,74 @@ mod randomization {
             }
         }
     }
+
+    /// Restricted randomization: the runs of a block are performed together,
+    /// the blocks in a random order and the runs of each in a random order
+    /// within it -- and the blocked analysis of responses recorded in that
+    /// order, put back in standard order, is the standard-order one.
+    #[test]
+    fn blocks_stay_together_and_the_blocked_analysis_does_not_depend_on_the_order() {
+        let blocked = u_doe::design::factorial::blocked_factorial(4, 4).unwrap();
+        // Arbitrary labels: only their equality matters.
+        let days: Vec<usize> = blocked.blocks.iter().map(|b| 30 - 7 * b).collect();
+        let standard: Vec<f64> = blocked
+            .design
+            .data
+            .iter()
+            .zip(&blocked.blocks)
+            .enumerate()
+            .map(|(i, (r, &b))| 20.0 + 3.0 * r[0] - r[1] + 2.0 * b as f64 + (i % 3) as f64 * 0.1)
+            .collect();
+        let names = ["A", "B", "C", "D"];
+        let want = doe_anova(&blocked.design, &standard, &names, Some(&days)).unwrap();
+        let mut orders = std::collections::HashSet::new();
+        for seed in 1..=8 {
+            let planned = blocked.design.randomized_in_blocks(&days, seed).unwrap();
+            assert_eq!(
+                planned.run_order,
+                blocked
+                    .design
+                    .randomized_in_blocks(&days, seed)
+                    .unwrap()
+                    .run_order
+            );
+            let mut sorted = planned.run_order.clone();
+            sorted.sort_unstable();
+            assert_eq!(sorted, (0..16).collect::<Vec<_>>());
+            // Four runs a day, performed one after another.
+            let performed: Vec<usize> = planned.run_order.iter().map(|&i| days[i]).collect();
+            for chunk in performed.chunks(4) {
+                assert!(
+                    chunk.iter().all(|&d| d == chunk[0]),
+                    "seed {seed}: {performed:?}"
+                );
+            }
+            orders.insert(planned.run_order.clone());
+            let in_run_order: Vec<f64> = planned.run_order.iter().map(|&i| standard[i]).collect();
+            let performed_days: Vec<usize> = performed.clone();
+            let got = doe_anova(
+                &planned.design,
+                &in_run_order,
+                &names,
+                Some(&performed_days),
+            )
+            .unwrap();
+            for (g, w) in got.effects.iter().zip(&want.effects) {
+                assert!(
+                    (g.sum_of_squares - w.sum_of_squares).abs() < 1e-9,
+                    "{}",
+                    g.name
+                );
+            }
+            let (gb, wb) = (got.blocks.unwrap(), want.blocks.unwrap());
+            assert!((gb.sum_of_squares - wb.sum_of_squares).abs() < 1e-9);
+            assert!((got.residual_ss - want.residual_ss).abs() < 1e-9);
+        }
+        assert!(
+            orders.len() >= 7,
+            "eight seeds gave {} orders",
+            orders.len()
+        );
+        assert!(blocked.design.randomized_in_blocks(&days[..3], 1).is_err());
+    }
 }

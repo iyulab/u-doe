@@ -422,25 +422,14 @@ impl BlockedDesign {
     /// assert_eq!(planned.run_order, blocked.randomized(7).run_order);
     /// ```
     pub fn randomized(&self, seed: u64) -> RandomizedBlockedDesign {
-        let mut rng = u_numflow::random::create_rng(seed);
-        let block_order = u_numflow::random::shuffled_indices(self.n_blocks, &mut rng);
-        let mut run_order = Vec::with_capacity(self.blocks.len());
-        for &block in &block_order {
-            let mut runs: Vec<usize> = (0..self.blocks.len())
-                .filter(|&r| self.blocks[r] == block)
-                .collect();
-            u_numflow::random::shuffle(&mut runs, &mut rng);
-            run_order.extend(runs);
-        }
+        let planned = self
+            .design
+            .randomized_in_blocks(&self.blocks, seed)
+            .expect("a blocked design has one block per run by construction");
+        let run_order = planned.run_order;
         RandomizedBlockedDesign {
             design: BlockedDesign {
-                design: super::DesignMatrix {
-                    data: run_order
-                        .iter()
-                        .map(|&i| self.design.data[i].clone())
-                        .collect(),
-                    factor_names: self.design.factor_names.clone(),
-                },
+                design: planned.design,
                 blocks: run_order.iter().map(|&i| self.blocks[i]).collect(),
                 n_blocks: self.n_blocks,
                 confounded: self.confounded.clone(),
