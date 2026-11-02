@@ -28,11 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   across as `PartiallyAliasedEffects` with `Block`, and centre points spread unevenly over the blocks as
   `PartiallyAliasedEffects { first: "curvature", second: "Block" }`. WebAssembly: an optional fifth argument
   `blocks`, and `blocks` in the result.
+- `fit_least_squares` fits blocks too, where they need not be orthogonal to the terms (blocks of unequal size, a run
+  lost from one): sum-to-zero block columns, every term's Type III sum of squares adjusted for them, and the blocks'
+  own Type III sum of squares on `blocks − 1` degrees of freedom (`LeastSquaresFit::blocks`). A term constant within
+  every block is refused as `AliasedEffects` with `Block`. WebAssembly: an optional fifth argument `blocks`.
 
 ### Changed
 
-- **Breaking** `doe_anova` takes a fourth argument, `blocks: Option<&[usize]>`; pass `None` for the analysis it
-  made before.
+- **Breaking** `doe_anova` and `fit_least_squares` take a fourth argument, `blocks: Option<&[usize]>`; pass `None`
+  for the analysis they made before.
 - **Breaking** `DoeError` has a new variant, `UnsupportedBlocking { k, n_blocks, supported }` (code
   `unsupported_blocking`).
 - Depends on u-numflow 0.16.

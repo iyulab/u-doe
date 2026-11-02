@@ -197,7 +197,7 @@ proptest! {
     ) {
         let design = full_factorial(k).unwrap();
         let names: Vec<&str> = design.factor_names.iter().map(String::as_str).collect();
-        let fit = fit_least_squares(&design, &responses, &names).unwrap();
+        let fit = fit_least_squares(&design, &responses, &names, None).unwrap();
         let anova = doe_anova(&design, &responses, &names, None).unwrap();
         let effects = estimate_effects(&design, &responses, 1).unwrap();
         let tol = |x: f64| 1e-6 * (1.0 + x.abs());
@@ -221,11 +221,11 @@ proptest! {
         let mut y = responses.clone();
         y.remove(dropped);
         prop_assert!(doe_anova(&unbalanced, &y, &names, None).is_err());
-        let fit = fit_least_squares(&unbalanced, &y, &names).unwrap();
+        let fit = fit_least_squares(&unbalanced, &y, &names, None).unwrap();
         prop_assert_eq!(fit.residual_df, unbalanced.run_count() - 1 - k);
         for (idx, name) in names.iter().enumerate() {
             let reduced: Vec<&str> = names.iter().copied().filter(|n| n != name).collect();
-            let without = fit_least_squares(&unbalanced, &y, &reduced).unwrap();
+            let without = fit_least_squares(&unbalanced, &y, &reduced, None).unwrap();
             let expected = without.residual_ss - fit.residual_ss;
             prop_assert!(
                 (fit.terms[idx].sum_of_squares - expected).abs() < tol(expected),

@@ -20,7 +20,7 @@
 
 use u_numflow::matrix::Matrix;
 
-use crate::analysis::anova::f_pvalue;
+use crate::analysis::anova::{f_pvalue, BlockTerm};
 use crate::analysis::has_no_variation;
 use crate::{design::DesignMatrix, error::DoeError};
 
@@ -61,7 +61,8 @@ pub struct LeastSquaresFit {
     pub terms: Vec<LeastSquaresTerm>,
     /// Residual sum of squares.
     pub residual_ss: f64,
-    /// Residual degrees of freedom: `n − terms − 1`.
+    /// Residual degrees of freedom: `n − terms − 1`, less the block degrees of
+    /// freedom when there are blocks.
     pub residual_df: usize,
     /// Total sum of squares about the mean.
     pub total_ss: f64,
@@ -73,6 +74,11 @@ pub struct LeastSquaresFit {
     pub fitted: Vec<f64>,
     /// Residuals `y − fitted`, one per run.
     pub residuals: Vec<f64>,
+    /// The block term, when `blocks` were given: its Type III sum of squares
+    /// (the rise in the residual sum of squares when the block columns are
+    /// dropped) on `blocks − 1` degrees of freedom; `None` otherwise. As in
+    /// [`doe_anova`](crate::analysis::anova::doe_anova), no F test.
+    pub blocks: Option<BlockTerm>,
 }
 
 /// Fit the requested terms to two-level coded data by ordinary least squares
@@ -85,6 +91,18 @@ pub struct LeastSquaresFit {
 /// * `responses`    — Observed response values, one per run
 /// * `effect_names` — Terms to fit, e.g. `&["A", "B", "A:B"]`. Interaction
 ///   names join factor names with `":"`; any order is accepted.
+/// * `blocks`       — The block of each run (any labels), or `None`.
+///
+/// # Blocks
+///
+/// A block is a fixed effect: one column per block but the first, coded
+/// `+1` in that block, `−1` in the first and 0 elsewhere (sum-to-zero), so the
+/// intercept is the average of the block means at the centre of the design.
+/// Unlike [`doe_anova`](crate::analysis::anova::doe_anova), a term need not
+/// be orthogonal to the blocks -- an unequal number of runs per block, or a
+/// run lost from one, is what least squares is for; the Type III sums of
+/// squares are each adjusted for the blocks. Only a term that is constant
+/// within every block is refused: it is confounded with them.
 ///
 /// # Balanced data
 ///
@@ -102,7 +120,10 @@ pub struct LeastSquaresFit {
 /// [`DoeError::OverSpecifiedModel`] if the terms and intercept outnumber the
 /// runs; [`DoeError::AliasedEffects`] if the requested columns are linearly
 /// dependent (two aliased terms of a regular fraction, or a contrast that is
-/// constant over the runs kept), so the coefficients are not identifiable.
+/// constant over the runs kept), so the coefficients are not identifiable --
+/// with `Block` as `second` for a term constant within every block;
+/// [`DoeError::DimensionMismatch`] (`parameter` = `blocks`) if `blocks` does
+/// not hold one block per run.
 ///
 /// # Examples
 ///
@@ -114,7 +135,7 @@ pub struct LeastSquaresFit {
 /// let mut design = full_factorial(2).unwrap();
 /// design.data.pop();
 /// let responses = vec![28.0, 36.0, 18.0];
-/// let fit = fit_least_squares(&design, &responses, &["A", "B"]).unwrap();
+/// let fit = fit_least_squares(&design, &responses, &["A", "B"], None).unwrap();
 /// assert_eq!(fit.terms.len(), 2);
 /// assert_eq!(fit.residual_df, 0);
 /// ```
@@ -122,6 +143,7 @@ pub fn fit_least_squares(
     design: &DesignMatrix,
     responses: &[f64],
     effect_names: &[&str],
+    blocks: Option<&[usize]>,
 ) -> Result<LeastSquaresFit, DoeError> {
     let n = design.run_count();
     if responses.len() != n {
@@ -132,6 +154,17 @@ pub fn fit_least_squares(
             got: responses.len(),
             counted: "one response per run",
         });
+    }
+    if let Some(blocks) = blocks {
+        if blocks.len() != n {
+            return Err(DoeError::DimensionMismatch {
+                parameter: "blocks",
+                index: None,
+                expected: n,
+                got: blocks.len(),
+                counted: "one block per run",
+            });
+        }
     }
     design.check_not_empty()?;
     design.check_shape()?;
@@ -144,16 +177,36 @@ pub fn fit_least_squares(
         .map(|name| resolve_term(name, &design.factor_names))
         .collect::<Result<_, _>>()?;
 
-    // One degree of freedom goes to the mean; the terms need one each.
-    let p = terms.len() + 1;
+    // The block of each run, numbered 0.. in label order.
+    let block_of: Vec<usize> = match blocks {
+        Some(labels) => {
+            let mut sorted: Vec<usize> = labels.to_vec();
+            sorted.sort_unstable();
+            sorted.dedup();
+            labels
+                .iter()
+                .map(|l| sorted.binary_search(l).expect("every label is in the list"))
+                .collect()
+        }
+        None => vec![0; n],
+    };
+    let n_blocks = block_of.iter().max().map_or(1, |&b| b + 1);
+    let block_df = n_blocks - 1;
+
+    // One degree of freedom goes to the mean, one to each term and
+    // `blocks − 1` to the blocks.
+    let k = terms.len() + 1;
+    let p = k + block_df;
     if p > n {
         return Err(DoeError::OverSpecifiedModel {
-            terms: terms.len(),
+            terms: terms.len() + block_df,
             runs: n,
         });
     }
 
-    // Model matrix: intercept, then one product column per term.
+    // Model matrix: intercept, one product column per term, then the block
+    // columns (sum-to-zero against the first block) -- last, so a term keeps
+    // its column index whether or not there are blocks.
     let rows: Vec<Vec<f64>> = (0..n)
         .map(|run| {
             let mut row = Vec::with_capacity(p);
@@ -163,20 +216,26 @@ pub fn fit_least_squares(
                     .iter()
                     .map(|cols| cols.iter().map(|&c| design.get(run, c)).product::<f64>()),
             );
+            row.extend((1..n_blocks).map(|b| match block_of[run] {
+                0 => -1.0,
+                own if own == b => 1.0,
+                _ => 0.0,
+            }));
             row
         })
         .collect();
-    let refs: Vec<&[f64]> = rows.iter().map(Vec::as_slice).collect();
-    let x = Matrix::from_rows(&refs);
-    let xt = x.transpose();
-    let xtx = xt
-        .mul_mat(&x)
-        .expect("X' is p x n and X is n x p by construction");
 
-    // Linear dependence among the columns means the coefficients are not
+    // Linear dependence among the term columns means the coefficients are not
     // identifiable; name the pair (or the constant column) rather than
-    // returning a matrix error.
-    if let Some((i, j)) = dependent_columns(&xtx, n) {
+    // returning a matrix error. Checked on the unblocked columns: a two-block
+    // column is ±1 like a contrast and would pass for one.
+    let term_rows: Vec<&[f64]> = rows.iter().map(|r| &r[..k]).collect();
+    let term_x = Matrix::from_rows(&term_rows);
+    let term_xtx = term_x
+        .transpose()
+        .mul_mat(&term_x)
+        .expect("X' is k x n and X is n x k by construction");
+    if let Some((i, j)) = dependent_columns(&term_xtx, n) {
         // Column 0 is the mean. It goes second, as `I`, the place every other
         // path in the crate puts it -- a caller reads `second == "I"` as "this
         // term is constant over the runs".
@@ -188,7 +247,36 @@ pub fn fit_least_squares(
         };
         return Err(DoeError::AliasedEffects { first, second });
     }
+    // A term constant within every block lies in the span of the blocks: it is
+    // confounded with them.
+    if n_blocks > 1 {
+        for (idx, name) in effect_names.iter().enumerate() {
+            let mut level = vec![None::<f64>; n_blocks];
+            let constant = rows.iter().zip(&block_of).all(|(row, &b)| {
+                let v = row[idx + 1];
+                match level[b] {
+                    None => {
+                        level[b] = Some(v);
+                        true
+                    }
+                    Some(seen) => (seen - v).abs() < 1e-9,
+                }
+            });
+            if constant {
+                return Err(DoeError::AliasedEffects {
+                    first: name.to_string(),
+                    second: "Block".to_string(),
+                });
+            }
+        }
+    }
 
+    let refs: Vec<&[f64]> = rows.iter().map(Vec::as_slice).collect();
+    let x = Matrix::from_rows(&refs);
+    let xt = x.transpose();
+    let xtx = xt
+        .mul_mat(&x)
+        .expect("X' is p x n and X is n x p by construction");
     let xtx_inv = xtx.inverse().map_err(|_| DoeError::SingularModel)?;
     let xty = xt
         .mul_vec(responses)
@@ -238,6 +326,43 @@ pub fn fit_least_squares(
         })
         .collect();
 
+    // The blocks' Type III sum of squares: dropping their columns raises the
+    // residual sum of squares by b_B' (C_BB)⁻¹ b_B, C_BB the block block of
+    // (X'X)⁻¹ (Searle 1987, eq. 4.24 for several columns at once).
+    let block_term = match blocks {
+        None => None,
+        Some(_) if block_df == 0 => Some(BlockTerm {
+            sum_of_squares: 0.0,
+            df: 0,
+            mean_square: 0.0,
+        }),
+        Some(_) => {
+            let c_bb = Matrix::from_rows(
+                &(k..p)
+                    .map(|i| (k..p).map(|j| xtx_inv.get(i, j)).collect::<Vec<f64>>())
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .map(Vec::as_slice)
+                    .collect::<Vec<_>>(),
+            );
+            let c_bb_inv = c_bb.inverse().map_err(|_| DoeError::SingularModel)?;
+            let b_b = &beta[k..p];
+            let ss = c_bb_inv
+                .mul_vec(b_b)
+                .expect("(C_BB)^-1 is square in the block columns")
+                .iter()
+                .zip(b_b)
+                .map(|(a, b)| a * b)
+                .sum::<f64>()
+                .max(0.0);
+            Some(BlockTerm {
+                sum_of_squares: ss,
+                df: block_df,
+                mean_square: ss / block_df as f64,
+            })
+        }
+    };
+
     let r_squared = if !has_no_variation(total_ss, responses) {
         1.0 - residual_ss / total_ss
     } else {
@@ -261,6 +386,7 @@ pub fn fit_least_squares(
         r_squared_adj,
         fitted,
         residuals,
+        blocks: block_term,
     })
 }
 
@@ -325,7 +451,7 @@ mod tests {
             data: kept,
             factor_names: full.factor_names,
         };
-        let err = fit_least_squares(&design, &y, &["A", "B", "C"]).map(|f| f.intercept);
+        let err = fit_least_squares(&design, &y, &["A", "B", "C"], None).map(|f| f.intercept);
         assert_eq!(
             err,
             Err(DoeError::AliasedEffects {
@@ -371,7 +497,7 @@ mod tests {
     fn matches_doe_anova_on_balanced_data() {
         let (design, y) = replicated_cube();
         let names = ["A", "B", "C", "A:B"];
-        let fit = fit_least_squares(&design, &y, &names).unwrap();
+        let fit = fit_least_squares(&design, &y, &names, None).unwrap();
         let anova = doe_anova(&design, &y, &names, None).unwrap();
 
         for (t, e) in fit.terms.iter().zip(&anova.effects) {
@@ -422,7 +548,7 @@ mod tests {
             Err(DoeError::PartiallyAliasedEffects { .. })
         ));
 
-        let fit = fit_least_squares(&design, &y, &names).unwrap();
+        let fit = fit_least_squares(&design, &y, &names, None).unwrap();
         assert_eq!(fit.residual_df, 15 - 5);
         // The model still recovers the generating coefficients to within the
         // noise: |b_A − 5| small, |b_AB − 2| small.
@@ -441,7 +567,7 @@ mod tests {
         // computed independently by refitting without it.
         for (idx, name) in names.iter().enumerate() {
             let reduced: Vec<&str> = names.iter().copied().filter(|n| n != name).collect();
-            let without = fit_least_squares(&design, &y, &reduced).unwrap();
+            let without = fit_least_squares(&design, &y, &reduced, None).unwrap();
             let expected = without.residual_ss - fit.residual_ss;
             assert!(
                 close(fit.terms[idx].sum_of_squares, expected),
@@ -476,7 +602,7 @@ mod tests {
             factor_names: base.factor_names.clone(),
         };
         let y = vec![10.0, 14.0, 12.0, 20.0, 21.0, 19.0];
-        let fit = fit_least_squares(&design, &y, &["A", "B", "A:B"]).unwrap();
+        let fit = fit_least_squares(&design, &y, &["A", "B", "A:B"], None).unwrap();
         assert_eq!(fit.residual_df, 2);
         // Saturated in the four cells: fitted equals the cell means.
         assert!(close(fit.fitted[0], 10.0));
@@ -492,13 +618,13 @@ mod tests {
         // In the 2^(4-1) with I = ABCD, the columns of D and A:B:C coincide.
         let design = fractional_factorial(4, 1).unwrap();
         let y = vec![1.0, 2.0, 3.0, 5.0, 4.0, 6.0, 7.0, 9.0];
-        let err = fit_least_squares(&design, &y, &["D", "A:B:C"]).unwrap_err();
+        let err = fit_least_squares(&design, &y, &["D", "A:B:C"], None).unwrap_err();
         assert!(
             matches!(&err, DoeError::AliasedEffects { first, second } if first == "D" && second == "A:B:C"),
             "{err:?}"
         );
         // Either alone is fine.
-        assert!(fit_least_squares(&design, &y, &["A", "B", "C", "D"]).is_ok());
+        assert!(fit_least_squares(&design, &y, &["A", "B", "C", "D"], None).is_ok());
     }
 
     #[test]
@@ -506,15 +632,15 @@ mod tests {
         let design = full_factorial(2).unwrap();
         let y = vec![1.0, 2.0, 3.0, 4.0];
         assert!(matches!(
-            fit_least_squares(&design, &y, &["A", "Z"]),
+            fit_least_squares(&design, &y, &["A", "Z"], None),
             Err(DoeError::UnknownEffect { .. })
         ));
         assert!(matches!(
-            fit_least_squares(&design, &y, &["A:A"]),
+            fit_least_squares(&design, &y, &["A:A"], None),
             Err(DoeError::UnknownEffect { .. })
         ));
         assert!(matches!(
-            fit_least_squares(&design, &y, &["A", "B", "A:B", "A:B"]),
+            fit_least_squares(&design, &y, &["A", "B", "A:B", "A:B"], None),
             // Four terms need four degrees of freedom; four runs leave three
             // after the mean. `terms` counts the terms, not the mean.
             Err(DoeError::OverSpecifiedModel { terms: 4, runs: 4 })
@@ -522,11 +648,11 @@ mod tests {
         let mut centred = design.clone();
         centred.data.push(vec![0.0, 0.0]);
         assert!(matches!(
-            fit_least_squares(&centred, &[1.0, 2.0, 3.0, 4.0, 2.5], &["A"]),
+            fit_least_squares(&centred, &[1.0, 2.0, 3.0, 4.0, 2.5], &["A"], None),
             Err(DoeError::NotTwoLevelCoded { run: 4, .. })
         ));
         assert!(matches!(
-            fit_least_squares(&design, &[1.0, 2.0], &["A"]),
+            fit_least_squares(&design, &[1.0, 2.0], &["A"], None),
             Err(DoeError::DimensionMismatch {
                 parameter: "responses",
                 expected: 4,
@@ -540,7 +666,7 @@ mod tests {
     fn saturated_fit_has_no_residual_and_no_p_values() {
         let design = full_factorial(2).unwrap();
         let y = vec![1.0, 2.0, 3.0, 7.0];
-        let fit = fit_least_squares(&design, &y, &["A", "B", "A:B"]).unwrap();
+        let fit = fit_least_squares(&design, &y, &["A", "B", "A:B"], None).unwrap();
         assert_eq!(fit.residual_df, 0);
         assert!(fit.residual_ss.abs() < 1e-9);
         assert!(fit.terms.iter().all(|t| t.p_value.is_none()));
@@ -583,8 +709,8 @@ mod statsmodels_reference {
         let responses = [
             9.881, 11.9, 4.167, 10.474, 13.549, 12.328, 9.01, 8.853, 13.484,
         ];
-        let fit =
-            fit_least_squares(&design, &responses, &["A", "B", "C", "A:B"]).expect("a valid fit");
+        let fit = fit_least_squares(&design, &responses, &["A", "B", "C", "A:B"], None)
+            .expect("a valid fit");
         assert!(
             close(fit.intercept, 9.786161764705883),
             "intercept {}",
@@ -675,5 +801,224 @@ mod statsmodels_reference {
         ]) {
             assert!(close(*got, want), "fitted {got} vs {want}");
         }
+    }
+}
+
+/// Blocks in the least-squares fit: on balanced blocked data the same table
+/// as `doe_anova`; on unbalanced blocks (unequal days, a run lost) the Type
+/// III table statsmodels 0.15.0 computes (`ols("y ~ A + B + C + A:B +
+/// C(block, Sum)")`, `anova_lm(typ=3)`, seeded NumPy noise).
+#[cfg(test)]
+mod blocks {
+    use super::*;
+    use crate::analysis::anova::doe_anova;
+    use crate::design::factorial::blocked_factorial;
+
+    fn close(got: f64, want: f64) -> bool {
+        (got - want).abs() <= 1e-9 * want.abs().max(1.0)
+    }
+
+    #[test]
+    fn balanced_blocks_give_the_doe_anova_table() {
+        let blocked = blocked_factorial(4, 4).expect("2^4 in 4 blocks");
+        let y: Vec<f64> = blocked
+            .design
+            .data
+            .iter()
+            .zip(&blocked.blocks)
+            .enumerate()
+            .map(|(run, (r, &b))| {
+                20.0 + 3.0 * r[0] - 2.0 * r[1]
+                    + r[0] * r[2]
+                    + 1.5 * b as f64
+                    + ((run * 7 % 5) as f64 - 2.0) * 0.2
+            })
+            .collect();
+        let names = ["A", "B", "C", "A:C"];
+        let a = doe_anova(&blocked.design, &y, &names, Some(&blocked.blocks)).expect("anova");
+        let f = fit_least_squares(&blocked.design, &y, &names, Some(&blocked.blocks))
+            .expect("least squares");
+        for (row, term) in a.effects.iter().zip(&f.terms) {
+            assert!(
+                close(term.sum_of_squares, row.sum_of_squares),
+                "{}",
+                row.name
+            );
+            assert!(close(
+                term.f_statistic.expect("F"),
+                row.f_statistic.expect("F")
+            ));
+        }
+        let (ab, fb) = (a.blocks.expect("blocks"), f.blocks.expect("blocks"));
+        assert_eq!(ab.df, fb.df);
+        assert!(
+            close(fb.sum_of_squares, ab.sum_of_squares),
+            "{} vs {}",
+            fb.sum_of_squares,
+            ab.sum_of_squares
+        );
+        assert!(close(f.residual_ss, a.residual_ss));
+        assert_eq!(f.residual_df, a.residual_df);
+        assert!(close(f.r_squared, a.r_squared));
+        for (x, y) in f.fitted.iter().zip(&a.fitted) {
+            assert!(close(*x, *y), "{x} vs {y}");
+        }
+    }
+
+    const ROWS: [[f64; 4]; 15] = [
+        [-1.0, -1.0, -1.0, -1.0],
+        [1.0, -1.0, -1.0, -1.0],
+        [-1.0, 1.0, -1.0, -1.0],
+        [1.0, 1.0, -1.0, -1.0],
+        [-1.0, -1.0, 1.0, -1.0],
+        [-1.0, 1.0, 1.0, -1.0],
+        [1.0, 1.0, 1.0, -1.0],
+        [-1.0, -1.0, -1.0, 1.0],
+        [1.0, -1.0, -1.0, 1.0],
+        [-1.0, 1.0, -1.0, 1.0],
+        [1.0, 1.0, -1.0, 1.0],
+        [-1.0, -1.0, 1.0, 1.0],
+        [1.0, -1.0, 1.0, 1.0],
+        [-1.0, 1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0],
+    ];
+    const BLOCKS: [usize; 15] = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2];
+    const Y: [f64; 15] = [
+        27.98022, 32.410836, 28.344161, 36.913045, 23.644812, 30.508867, 39.026795, 33.313916,
+        36.377557, 33.276572, 33.908528, 21.427257, 25.535704, 23.796101, 31.486565,
+    ];
+    const FITTED: [f64; 15] = [
+        27.584515475748216,
+        31.686167768317855,
+        28.708167917956676,
+        36.967157960268324,
+        24.347064877709,
+        30.5356035510836,
+        38.794593593395255,
+        32.649401706914354,
+        36.75105399948401,
+        33.77305414912282,
+        34.405316022187826,
+        21.785222939628493,
+        25.88687523219814,
+        22.908875381836953,
+        31.167865424148612,
+    ];
+
+    #[test]
+    fn unbalanced_blocks_reproduce_statsmodels_type_iii() {
+        let design = DesignMatrix {
+            data: ROWS.iter().map(|r| r.to_vec()).collect(),
+            factor_names: ["A", "B", "C", "D"].map(String::from).to_vec(),
+        };
+        // Labels other than 0..b: only their equality matters.
+        let labels: Vec<usize> = BLOCKS.iter().map(|b| 10 * b + 7).collect();
+        let fit = fit_least_squares(&design, &Y, &["A", "B", "C", "A:B"], Some(&labels))
+            .expect("a valid fit");
+        // name, coefficient, SS, F, p
+        let terms: [(&str, f64, f64, f64, f64); 4] = [
+            (
+                "A",
+                3.0901605837203254,
+                131.48235265009174,
+                293.8548367330318,
+                1.3635848133201175e-07,
+            ),
+            (
+                "B",
+                1.601160658539733,
+                36.667753141952346,
+                81.95013547993433,
+                1.7753229332507856e-05,
+            ),
+            (
+                "C",
+                -1.6187252990196095,
+                28.133442374314136,
+                62.876484554875894,
+                4.653990554576451e-05,
+            ),
+            (
+                "A:B",
+                1.0393344374355027,
+                15.364834856240028,
+                34.33944515828725,
+                0.00037847158463040774,
+            ),
+        ];
+        for (term, (name, coef, ss, f, p)) in fit.terms.iter().zip(terms) {
+            assert_eq!(term.name, name);
+            assert!(
+                close(term.coefficient, coef),
+                "{name} b {}",
+                term.coefficient
+            );
+            assert!(
+                close(term.sum_of_squares, ss),
+                "{name} SS {}",
+                term.sum_of_squares
+            );
+            assert!(close(term.f_statistic.expect("F"), f), "{name} F");
+            assert!(close(term.p_value.expect("p"), p), "{name} p");
+        }
+        assert!(
+            close(fit.intercept, 30.452125079248376),
+            "{}",
+            fit.intercept
+        );
+        let block = fit.blocks.expect("blocks");
+        assert_eq!(block.df, 2);
+        assert!(
+            close(block.sum_of_squares, 133.42524565527805),
+            "{}",
+            block.sum_of_squares
+        );
+        assert!(close(fit.residual_ss, 3.5795184891115186));
+        assert_eq!(fit.residual_df, 8);
+        assert!(close(fit.r_squared, 0.9908247451533986));
+        assert!(close(fit.r_squared_adj, 0.9839433040184475));
+        for (run, (got, want)) in fit.fitted.iter().zip(FITTED).enumerate() {
+            assert!(close(*got, want), "fitted[{run}] {got} vs {want}");
+        }
+        // The block term by its definition: the rise in the residual when the
+        // block columns are dropped.
+        let without = fit_least_squares(&design, &Y, &["A", "B", "C", "A:B"], None).expect("fit");
+        assert!(close(
+            without.residual_ss - fit.residual_ss,
+            block.sum_of_squares
+        ));
+    }
+
+    #[test]
+    fn a_term_constant_within_every_block_is_confounded() {
+        let design = DesignMatrix {
+            data: ROWS.iter().map(|r| r.to_vec()).collect(),
+            factor_names: ["A", "B", "C", "D"].map(String::from).to_vec(),
+        };
+        // Two blocks by D: D is the block difference.
+        let by_d: Vec<usize> = ROWS.iter().map(|r| usize::from(r[3] > 0.0)).collect();
+        assert_eq!(
+            fit_least_squares(&design, &Y, &["A", "D"], Some(&by_d)).map(|f| f.intercept),
+            Err(DoeError::AliasedEffects {
+                first: "D".into(),
+                second: "Block".into()
+            })
+        );
+        assert!(matches!(
+            fit_least_squares(&design, &Y, &["A"], Some(&[0, 1])),
+            Err(DoeError::DimensionMismatch {
+                parameter: "blocks",
+                ..
+            })
+        ));
+        // 15 runs, 4 terms + mean + 14 blocks is too many.
+        let each: Vec<usize> = (0..15).collect();
+        assert!(matches!(
+            fit_least_squares(&design, &Y, &["A", "B", "C", "A:B"], Some(&each)),
+            Err(DoeError::OverSpecifiedModel {
+                terms: 18,
+                runs: 15
+            })
+        ));
     }
 }

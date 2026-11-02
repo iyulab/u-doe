@@ -39,7 +39,7 @@ fn the_analyses_give_the_same_ratios_in_any_unit() {
     let y = responses();
     let names = ["A", "B", "C", "A:B"];
     let base_anova = doe_anova(&design, &y, &names, None).expect("anova");
-    let base_ls = fit_least_squares(&design, &y, &names).expect("fit");
+    let base_ls = fit_least_squares(&design, &y, &names, None).expect("fit");
     let base_effects = estimate_effects(&design, &y, 3).expect("effects");
     let base_lenth = lenth(&design, &base_effects).expect("lenth");
 
@@ -61,7 +61,7 @@ fn the_analyses_give_the_same_ratios_in_any_unit() {
                 close(x, z, &format!("{} p", a.name), k);
             }
         }
-        let ls = fit_least_squares(&design, &yk, &names).expect("fit");
+        let ls = fit_least_squares(&design, &yk, &names, None).expect("fit");
         for (a, b) in ls.terms.iter().zip(&base_ls.terms) {
             if let (Some(x), Some(z)) = (a.t_statistic, b.t_statistic) {
                 close(x, z, &format!("{} t", a.name), k);

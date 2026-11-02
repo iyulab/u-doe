@@ -683,6 +683,7 @@ struct LeastSquaresFitDto {
     r_squared_adj: f64,
     fitted: Vec<f64>,
     residuals: Vec<f64>,
+    blocks: Option<BlockTermDto>,
 }
 
 #[derive(Serialize, tsify::Tsify)]
@@ -1074,7 +1075,7 @@ fn block_label(x: f64, index: usize) -> Result<usize, WireError> {
 /// contrast formula behind `doe_anova` and `estimate_effects` refuses.
 ///
 /// Returns `{ intercept, terms, residual_ss, residual_df, total_ss, r_squared,
-/// r_squared_adj, fitted, residuals }`. Each term carries `name`,
+/// r_squared_adj, fitted, residuals, blocks }`. Each term carries `name`,
 /// `coefficient`, `effect` (twice the coefficient), `std_error`,
 /// `t_statistic`, and a Type III `sum_of_squares` with `df`, `mean_square`,
 /// `f_statistic` and `p_value`. `std_error`, `t_statistic`, `f_statistic` and
@@ -1082,28 +1083,41 @@ fn block_label(x: f64, index: usize) -> Result<usize, WireError> {
 /// `f_statistic` and `p_value` are also `null` when the residual is exactly 0.
 /// On balanced data the effects and sums of squares equal `doe_anova`'s.
 ///
+/// `blocks` (optional): the block of each run, as in `doe_anova`. The terms
+/// need not be orthogonal to the blocks here (unequal blocks, a run lost);
+/// each Type III sum of squares is adjusted for them, and `blocks` in the
+/// result is `{ sum_of_squares, df, mean_square }` (`null` without blocks).
+///
 /// # Errors
 /// Throws an `Error` carrying `code` if dimensions do not match, an entry is not ±1
 /// (centre points belong in `doe_anova`, axial points in `fit_rsm`), the
 /// requested terms are aliased with each other or with the mean over the runs
-/// kept, or the terms and intercept outnumber the runs.
+/// kept (`aliased_effects`, with `second: "Block"` for a term constant within
+/// every block), or the terms, blocks and intercept outnumber the runs.
 #[wasm_bindgen(unchecked_return_type = "LeastSquaresFitDto")]
 pub fn fit_least_squares(
     #[wasm_bindgen(unchecked_param_type = "number[][]")] design: JsValue,
     #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] responses: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] factor_names: JsValue,
     #[wasm_bindgen(unchecked_param_type = "string[]")] effect_names: JsValue,
+    #[wasm_bindgen(unchecked_optional_param_type = "number[] | null")] blocks: Option<JsValue>,
 ) -> Result<JsValue, JsValue> {
     let data: Vec<Vec<f64>> = from_js(design, "design")?;
     let responses = read_numbers(&responses, "responses")?;
     let factor_names: Vec<String> = from_js(factor_names, "factor_names")?;
     let effect_names: Vec<String> = from_js(effect_names, "effect_names")?;
+    let blocks = read_blocks(blocks)?;
 
     let design = crate::design::DesignMatrix { data, factor_names };
     let effect_refs: Vec<&str> = effect_names.iter().map(|s| s.as_str()).collect();
 
-    let fit = crate::analysis::least_squares::fit_least_squares(&design, &responses, &effect_refs)
-        .map_err(js_err)?;
+    let fit = crate::analysis::least_squares::fit_least_squares(
+        &design,
+        &responses,
+        &effect_refs,
+        blocks.as_deref(),
+    )
+    .map_err(js_err)?;
 
     let dto = LeastSquaresFitDto {
         intercept: fit.intercept,
@@ -1130,6 +1144,11 @@ pub fn fit_least_squares(
         r_squared_adj: fit.r_squared_adj,
         fitted: fit.fitted,
         residuals: fit.residuals,
+        blocks: fit.blocks.map(|b| BlockTermDto {
+            sum_of_squares: b.sum_of_squares,
+            df: b.df,
+            mean_square: b.mean_square,
+        }),
     };
     to_js(&dto)
 }
@@ -2513,6 +2532,7 @@ mod engine_card_tests {
         s.op("doe_anova", anova, s.of::<DoeAnovaResultDto>());
         let mut fit = data();
         fit.push(arg("effect_names", names()));
+        fit.push(optional("blocks", s.of::<Option<Vec<u32>>>()));
         s.op("fit_least_squares", fit, s.of::<LeastSquaresFitDto>());
         s.op(
             "signal_to_noise",

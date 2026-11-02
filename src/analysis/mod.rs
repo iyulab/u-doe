@@ -65,7 +65,7 @@ mod unit_invariance {
                 .expect("valid")
                 .r_squared
         };
-        let ls = |y: &[f64]| fit_least_squares(&two_level, y, &names).expect("valid");
+        let ls = |y: &[f64]| fit_least_squares(&two_level, y, &names, None).expect("valid");
         let rsm = |y: &[f64]| fit_rsm(&central, y).expect("valid").r_squared;
         let share = |y: &[f64]| {
             estimate_effects(&two_level, y, 2)

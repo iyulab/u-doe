@@ -494,6 +494,16 @@
     },
     "LeastSquaresFitDto": {
       "properties": {
+        "blocks": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlockTermDto"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "fitted": {
           "items": {
             "format": "double",
@@ -1049,8 +1059,19 @@
     },
     "fit_least_squares.input": {
       "additionalProperties": false,
-      "description": "The arguments of fit_least_squares(design, responses, factor_names, effect_names), by name; the WebAssembly function takes them in that order.",
+      "description": "The arguments of fit_least_squares(design, responses, factor_names, effect_names, blocks), by name; the WebAssembly function takes them in that order.",
       "properties": {
+        "blocks": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "design": {
           "items": {
             "items": {

@@ -377,13 +377,15 @@ Since 0.10.0 three further inputs are errors rather than misleading numbers:
 
 **Blocks.** With `blocks`, the block differences (a batch, a shift, a day) are a fixed effect: `blocks: { sum_of_squares, df, mean_square }` is taken out of the residual, every run's `fitted` value moves by its block mean, and pure error is taken among replicates within one block. No F test is reported for the blocks — the runs were randomized only within them. An effect has to sum to zero within every block to be analysed: one confounded with the blocks is refused with `code: "aliased_effects"`, `second: "Block"`; one the blocks cut across with `code: "partially_aliased_effects"`, `second: "Block"`; centre points must be spread over the blocks in the same proportion (otherwise `partially_aliased_effects`, `first: "curvature"`).
 
-#### `fit_least_squares(design, responses, factor_names, effect_names) -> LeastSquaresFit`
+#### `fit_least_squares(design, responses, factor_names, effect_names, blocks?) -> LeastSquaresFit`
 
 Fit the requested terms by ordinary least squares and report **Type III (partial) sums of squares**. Same arguments as `doe_anova`, but the runs need not be balanced: a run may be left out and corners may be replicated unequally — exactly the inputs `doe_anova` and `estimate_effects` refuse, because their contrast formula is only exact on balanced, orthogonal data. Terms of any order are accepted (`"A:B:C"`).
 
 Each term's `sum_of_squares` is the increase in the residual sum of squares when that term alone is dropped from the model. On balanced data it equals `doe_anova`'s, and `effect` (twice the `coefficient`) equals `estimate_effects`'s estimate; on unbalanced data the partial sums of squares of correlated terms do not add up to the model sum of squares — that is what makes them Type III.
 
-Errors: a value other than `-1`/`+1` (centre points belong in `doe_anova`, which tests them for curvature; axial points in `fit_rsm`); requested terms whose columns coincide over the runs kept, or a term that is constant over them (aliased with the mean); more terms plus intercept than runs.
+`blocks` (optional) is the block of each run, as in `doe_anova` — but here the terms need not be orthogonal to the blocks (blocks of unequal size, a run lost from one): every term's Type III sum of squares is adjusted for the blocks, and the result's `blocks` is `{ sum_of_squares, df, mean_square }`, the rise in the residual when the blocks are dropped (`null` without `blocks`). The intercept is then the average of the block means at the centre of the design.
+
+Errors: a value other than `-1`/`+1` (centre points belong in `doe_anova`, which tests them for curvature; axial points in `fit_rsm`); requested terms whose columns coincide over the runs kept, or a term that is constant over them (aliased with the mean), or constant within every block (`aliased_effects` with `second: "Block"`); more terms plus blocks plus intercept than runs.
 
 **Output:**
 ```json
@@ -391,7 +393,7 @@ Errors: a value other than `-1`/`+1` (centre points belong in `doe_anova`, which
   "terms": [{ "name": "A", "coefficient": 5.1, "effect": 10.2, "std_error": 0.14, "t_statistic": 36.4,
               "sum_of_squares": 398.1, "df": 1, "mean_square": 398.1, "f_statistic": 1325.0, "p_value": 0.0 }],
   "residual_ss": 3.0, "residual_df": 10, "total_ss": 1210.4, "r_squared": 0.997, "r_squared_adj": 0.996,
-  "fitted": [40.9, 51.1, ...], "residuals": [0.2, -0.1, ...] }
+  "fitted": [40.9, 51.1, ...], "residuals": [0.2, -0.1, ...], "blocks": null }
 ```
 
 #### `signal_to_noise(responses, goal) -> [f64]`
