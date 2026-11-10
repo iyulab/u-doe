@@ -597,18 +597,11 @@ fn pure_error(design: &DesignMatrix, responses: &[f64], block_of: &[usize]) -> O
 }
 // ---------------------------------------------------------------------------
 // F-distribution p-value: P(F(df1, df2) > f)
-// Using regularized incomplete beta: p = I_x(df2/2, df1/2) where x = df2/(df2 + df1*f)
 // ---------------------------------------------------------------------------
 
 /// Upper-tail p-value of `F(df1, df2)`.
 pub(crate) fn f_pvalue(f: f64, df1: usize, df2: usize) -> f64 {
-    if f <= 0.0 {
-        return 1.0;
-    }
-    let d1 = df1 as f64;
-    let d2 = df2 as f64;
-    let x = d2 / (d2 + d1 * f);
-    u_numflow::special::regularized_incomplete_beta(x, d2 / 2.0, d1 / 2.0)
+    u_numflow::special::f_distribution_sf(f, df1 as f64, df2 as f64)
 }
 
 #[cfg(test)]
