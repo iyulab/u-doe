@@ -243,8 +243,8 @@ mod tests {
     fn ccd_factorial_points_at_plus_minus_one() {
         let d = ccd(2, AlphaType::FaceCentered, 1).unwrap();
         // First 4 rows = factorial: all values ±1
-        for run in 0..4 {
-            for &v in &d.data[run] {
+        for (run, row) in d.data[..4].iter().enumerate() {
+            for &v in row {
                 assert!(
                     (v.abs() - 1.0).abs() < 1e-10,
                     "factorial point run {run} has value {v}"

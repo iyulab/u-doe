@@ -662,8 +662,8 @@ mod tests {
         let p = c.p_value.expect("p");
         assert!((p - (1.0 - (f / (2.0 + f)).sqrt())).abs() < 1e-9, "p = {p}");
         // Centre runs are fitted at their own mean.
-        for run in 8..11 {
-            assert!((r.fitted[run] - 55.0).abs() < 1e-9);
+        for &fitted in &r.fitted[8..11] {
+            assert!((fitted - 55.0).abs() < 1e-9);
         }
     }
 

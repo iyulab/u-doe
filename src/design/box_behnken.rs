@@ -190,8 +190,8 @@ mod tests {
         let d = box_behnken(3, 3).unwrap();
         // Last 3 rows are center points
         let n = d.run_count();
-        for i in (n - 3)..n {
-            for &v in &d.data[i] {
+        for row in &d.data[(n - 3)..n] {
+            for &v in row {
                 assert!(v.abs() < 1e-10, "center point not zero: {v}");
             }
         }

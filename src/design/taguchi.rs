@@ -417,17 +417,16 @@ mod tests {
         assert_eq!(d.run_count(), 18);
         assert_eq!(d.factor_count(), 8);
         // Column 0 must be two-level: only ±1
-        for r in 0..18 {
-            let v = d.data[r][0];
+        for (r, row) in d.data[..18].iter().enumerate() {
+            let v = row[0];
             assert!(
                 (v + 1.0).abs() < 1e-9 || (v - 1.0).abs() < 1e-9,
                 "L18 col 0 run {r}: expected ±1, got {v}"
             );
         }
         // Columns 1-7 must be three-level: only −1, 0, +1
-        for col in 1..8 {
-            for r in 0..18 {
-                let v = d.data[r][col];
+        for (r, row) in d.data[..18].iter().enumerate() {
+            for (col, &v) in row.iter().enumerate().take(8).skip(1) {
                 assert!(
                     (v + 1.0).abs() < 1e-9 || v.abs() < 1e-9 || (v - 1.0).abs() < 1e-9,
                     "L18 col {col} run {r}: unexpected value {v}"
